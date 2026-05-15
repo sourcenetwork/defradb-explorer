@@ -1,0 +1,247 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--obsidian);
+  overflow: hidden;
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  height: 44px;
+  border-bottom: 1px solid var(--dark-border);
+  flex-shrink: 0;
+}
+
+.modeToggle {
+  display: flex;
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.modeBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-500);
+  padding: 4px 12px;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+.modeBtn:hover { color: var(--muted); }
+
+.modeBtnActive {
+  background: var(--surface-lift);
+  color: var(--white);
+}
+
+.toolbarHint {
+  font-size: 12px;
+  color: var(--gray-600);
+  flex: 1;
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btnSecondary {
+  background: transparent;
+  border: 1px solid var(--dark-border-2);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  padding: 5px 14px;
+  transition: border-color 0.1s, color 0.1s;
+}
+.btnSecondary:hover { border-color: var(--gray-500); color: var(--white); }
+
+.btnApply {
+  background: var(--defradb);
+  border: none;
+  border-radius: 6px;
+  color: #000;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  padding: 5px 16px;
+  transition: opacity 0.1s;
+}
+.btnApply:hover    { opacity: 0.88; }
+.btnApply:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Body ───────────────────────────────────────────────────────────────────── */
+
+.body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editorWrap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--dark-border);
+}
+
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+/* ── Result card ─────────────────────────────────────────────────────────────── */
+
+.resultCard {
+  background: var(--dark-surface);
+  border: 1px solid rgba(57,226,101,0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+  margin-bottom: 8px;
+}
+
+.resultItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--dark-border);
+}
+
+.resultName {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--white);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resultFields {
+  font-size: 12px;
+  color: var(--gray-500);
+  flex-shrink: 0;
+}
+
+.resultVersion {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--gray-600);
+  flex-shrink: 0;
+}
+
+/* ── Error card ──────────────────────────────────────────────────────────────── */
+
+.errorCard {
+  background: var(--dark-surface);
+  border: 1px solid rgba(255,95,87,0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.errorHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #FF5F57;
+  margin-bottom: 6px;
+}
+
+.errorMsg {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* ── Reference card ──────────────────────────────────────────────────────────── */
+
+.refCard {
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.refTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.refSection {
+  margin-bottom: 10px;
+}
+.refSection:last-child { margin-bottom: 0; }
+
+.refLabel {
+  font-size: 12px;
+  color: var(--gray-600);
+  margin: 0 0 5px;
+}
+
+.refChip {
+  display: inline-block;
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--defradb);
+  background: rgba(16,203,255,0.08);
+  border: 1px solid rgba(16,203,255,0.18);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin: 0 4px 4px 0;
+}
+
+.refCode {
+  display: block;
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--subtitle);
+  background: var(--obsidian);
+  border: 1px solid var(--dark-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.7;
+}

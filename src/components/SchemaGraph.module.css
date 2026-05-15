@@ -1,0 +1,118 @@
+.canvas {
+  width: 100%;
+  height: 100%;
+  background: var(--obsidian);
+}
+
+/* ── Node ─────────────────────────────────────────────────────────────────── */
+
+.node {
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  font-family: 'CommitMono', 'JetBrains Mono', monospace;
+  min-width: 200px;
+}
+
+.node:hover {
+  border-color: var(--defradb-border);
+}
+
+.nodeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--dark-border);
+  background: var(--surface-lift);
+  gap: 8px;
+}
+
+.nodeTitle {
+  font-family: 'Funnel Display', Inter, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--white);
+  letter-spacing: -0.3px;
+}
+
+.nodeKind {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--defradb);
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--defradb-dim);
+  border: 1px solid var(--defradb-border);
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+
+.nodeFields {
+  padding: 4px 0 8px;
+}
+
+.nodeField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  gap: 12px;
+}
+
+.nodeFieldName {
+  font-size: 12px;
+  color: var(--subtitle);
+}
+
+.nodeFieldType {
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+.nodeFieldScalar   { color: var(--green-btn); }
+.nodeFieldRelation { color: var(--defradb); }
+
+/* ── Handles ─────────────────────────────────────────────────────────────── */
+
+.handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--defradb) !important;
+  border: 2px solid var(--dark-surface) !important;
+  border-radius: 50% !important;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.node:hover .handle { opacity: 1; }
+
+/* ── Controls & minimap ──────────────────────────────────────────────────── */
+
+.controls {
+  background: var(--dark-surface) !important;
+  border: 1px solid var(--dark-border-2) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+}
+
+.minimap {
+  background: var(--dark-surface) !important;
+  border: 1px solid var(--dark-border-2) !important;
+  border-radius: 6px !important;
+}
+
+/* ── Empty ───────────────────────────────────────────────────────────────── */
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+}

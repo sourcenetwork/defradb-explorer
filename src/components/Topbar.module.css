@@ -1,0 +1,40 @@
+.topbar {
+  height: 52px;
+  background: var(--obsidian);
+  border-bottom: 1px solid var(--dark-border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px 0 0;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  height: 100%;
+  text-decoration: none;
+  min-width: 220px;
+}
+
+.fallback {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--white);
+  letter-spacing: -0.2px;
+}
+
+.logo img + .fallback { display: none; }
+.logo img[style*="display: none"] + .fallback { display: block; }
+
+.right {
+  flex: 1;
+  justify-content: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+

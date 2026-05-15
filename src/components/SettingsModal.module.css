@@ -1,0 +1,235 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 12px;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--dark-border);
+}
+
+.title {
+  font-family: 'Funnel Display', Inter, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: -0.5px;
+  color: var(--white);
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.closeBtn:hover { background: var(--surface-lift); color: var(--white); }
+
+.body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--subtitle);
+}
+
+.optional { color: var(--gray-600); font-weight: 400; }
+
+.input {
+  height: 36px;
+  padding: 0 12px;
+  background: var(--surface-lift);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 6px;
+  color: var(--white);
+  font-size: 13px;
+  font-family: 'CommitMono', 'JetBrains Mono', monospace;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.input:focus { border-color: var(--defradb); }
+.input::placeholder { color: var(--gray-600); }
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.corsHint { display: flex; flex-direction: column; gap: 4px; }
+
+.codeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-lift);
+  border-radius: 5px;
+  padding: 2px 2px 2px 8px;
+  border: 1px solid var(--dark-border);
+}
+
+.code {
+  flex: 1;
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--defradb);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copyBtn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.copyBtn:hover { background: var(--dark-border); color: var(--white); }
+
+.pnaWarning {
+  background: rgba(255, 186, 0, 0.07);
+  border: 1px solid rgba(255, 186, 0, 0.25);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pnaTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffba00;
+}
+
+.pnaBody {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.pnaList {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+  padding-left: 16px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pnaCode {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: #ffba00;
+  background: rgba(255, 186, 0, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.testResult {
+  font-size: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-family: 'CommitMono', monospace;
+}
+
+.testOk   { background: rgba(57,226,101,0.08); color: var(--green-btn); border: 1px solid rgba(57,226,101,0.2); }
+.testFail { background: rgba(255,95,87,0.08);  color: #FF5F57;          border: 1px solid rgba(255,95,87,0.2); }
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-top: 1px solid var(--dark-border);
+  gap: 8px;
+}
+
+.footerRight {
+  display: flex;
+  gap: 8px;
+}
+
+.btnTest, .btnCancel, .btnSave {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.btnTest {
+  background: transparent;
+  border: 1px solid var(--dark-border-2);
+  color: var(--subtitle);
+}
+
+.btnTest:hover:not(:disabled) { border-color: var(--defradb); color: var(--defradb); }
+.btnTest:disabled { opacity: 0.5; cursor: default; }
+
+.btnCancel {
+  background: transparent;
+  border: 1px solid var(--dark-border);
+  color: var(--muted);
+}
+
+.btnCancel:hover { border-color: var(--dark-border-2); color: var(--white); }
+
+.btnSave {
+  background: var(--green-btn);
+  border: none;
+  color: var(--black);
+}
+
+.btnSave:hover { background: var(--green-hover); }

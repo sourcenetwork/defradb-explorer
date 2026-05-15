@@ -1,0 +1,190 @@
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--dark-border);
+  background: var(--obsidian);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.section {
+  padding: 16px 8px 8px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray-600);
+  padding: 0 8px;
+  margin-bottom: 4px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--subtitle);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+
+.navItem:hover {
+  background: var(--dark-surface);
+  color: var(--white);
+}
+
+.navActive {
+  background: var(--defradb-dim) !important;
+  color: var(--defradb) !important;
+  font-weight: 500;
+}
+
+.navIcon {
+  display: flex;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.navItem:hover .navIcon,
+.navActive .navIcon {
+  opacity: 1;
+}
+
+.navBadge {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface-lift);
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 9999px;
+}
+
+.navActive .navBadge {
+  background: rgba(16, 203, 255, 0.15);
+  color: var(--defradb);
+}
+
+.collectionSection {
+  padding: 0 8px 8px;
+}
+
+.collectionItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: 'CommitMono', 'JetBrains Mono', monospace;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.collectionItem:hover {
+  background: var(--dark-surface);
+  color: var(--white);
+}
+
+.collectionActive {
+  background: var(--dark-surface);
+  color: var(--white);
+}
+
+.collectionDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--defradb);
+  flex-shrink: 0;
+}
+
+.footer {
+  margin-top: auto;
+  padding: 8px;
+  border-top: 1px solid var(--dark-border);
+}
+
+.peerStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border);
+}
+
+.peerDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green-btn);
+  box-shadow: 0 0 0 2px rgba(57, 226, 101, 0.2);
+  flex-shrink: 0;
+}
+
+.peerInfo {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.peerLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--white);
+}
+
+.peerId {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.peerOnline  { background: var(--green-btn); box-shadow: 0 0 0 2px rgba(57,226,101,0.2); }
+.peerOffline { background: var(--gray-600); }
+
+.skeletonGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.skeleton {
+  height: 20px;
+  border-radius: 4px;
+  background: var(--dark-surface);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.8; }
+}
+
+.errorNote {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 8px;
+  font-style: italic;
+}

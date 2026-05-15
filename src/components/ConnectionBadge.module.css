@@ -1,0 +1,49 @@
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dark-border);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.badge:hover { background: var(--dark-surface); border-color: var(--dark-border-2); }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.host {
+  font-family: 'CommitMono', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* states */
+.connected    .dot  { background: var(--green-btn); box-shadow: 0 0 0 2px rgba(57,226,101,0.2); }
+.connected    .label { color: var(--green-btn); }
+
+.disconnected .dot  { background: #FF5F57; }
+.disconnected .label { color: #FF5F57; }
+
+.checking     .dot  { background: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
+.checking     .label { color: var(--muted); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}

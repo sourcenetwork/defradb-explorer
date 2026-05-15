@@ -1,0 +1,564 @@
+.explorer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--obsidian);
+  overflow: hidden;
+}
+
+/* ── Panel header ─────────────────────────────────────────────────────────── */
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  height: 40px;
+  border-bottom: 1px solid var(--dark-border);
+  flex-shrink: 0;
+}
+
+.panelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+/* ── Breadcrumb ───────────────────────────────────────────────────────────── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 8px 12px 7px;
+  border-bottom: 1px solid var(--dark-border);
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+.breadcrumbItem { display: flex; align-items: center; gap: 1px; }
+
+.breadcrumbSep {
+  color: var(--gray-600);
+  font-size: 13px;
+  margin: 0 2px;
+  user-select: none;
+}
+
+.breadcrumbBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--defradb);
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: background 0.1s;
+}
+.breadcrumbBtn:hover     { background: var(--defradb-dim); }
+.breadcrumbCurrent       { color: var(--white); cursor: default; }
+.breadcrumbCurrent:hover { background: transparent; }
+
+/* ── Page content ─────────────────────────────────────────────────────────── */
+
+.pageContent {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 32px;
+}
+
+/* ── Search ───────────────────────────────────────────────────────────────── */
+
+.searchWrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 12px 8px;
+  padding: 6px 10px;
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 7px;
+}
+
+.searchIcon  { color: var(--gray-600); flex-shrink: 0; }
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--white);
+  caret-color: var(--defradb);
+}
+.searchInput::placeholder { color: var(--gray-600); }
+
+.searchClear {
+  background: transparent;
+  border: none;
+  color: var(--gray-600);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.1s;
+}
+.searchClear:hover { color: var(--muted); }
+
+/* ── Root list ────────────────────────────────────────────────────────────── */
+
+.rootList {
+  padding: 10px 0;
+}
+
+.rootRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 6px;
+  padding: 7px 10px 7px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.rootRow:hover { background: var(--dark-surface); }
+.rootRow:hover .rootRowChevron { opacity: 1; }
+
+.rootRowDim { opacity: 0.7; }
+
+.rootRowName {
+  flex: 1;
+  min-width: 0;
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--subtitle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rootRowType {
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--defradb);
+  opacity: 0.6;
+  flex-shrink: 0;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rootRowBadge {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-lift);
+  color: var(--gray-600);
+  flex-shrink: 0;
+}
+
+.rootRowBadgeActive {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(16,203,255,0.12);
+  color: var(--defradb);
+  flex-shrink: 0;
+}
+
+.rootRowChevron {
+  color: var(--gray-600);
+  opacity: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.1s;
+}
+
+/* ── Detail page ──────────────────────────────────────────────────────────── */
+
+.detailPage { padding: 14px 12px 0; }
+
+.detailTitleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--dark-border);
+}
+
+.addBtnLg {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--defradb);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+  opacity: 0.5;
+  transition: opacity 0.1s;
+}
+.addBtnLg:hover { opacity: 1; }
+
+.detailTitleContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.detailName {
+  font-family: 'CommitMono', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--white);
+  word-break: break-all;
+}
+
+.nameQuery    { color: var(--defradb); }
+.nameMutation { color: #e0a96d; }
+
+.detailReturnType {
+  font-family: 'CommitMono', monospace;
+  font-size: 14px;
+  color: var(--gray-400);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: default;
+  display: inline;
+}
+
+.detailReturnTypeLink {
+  cursor: pointer;
+  color: var(--subtitle);
+  text-decoration: underline;
+  text-decoration-color: rgba(255,255,255,0.15);
+  transition: color 0.1s;
+}
+.detailReturnTypeLink:hover { color: var(--white); }
+
+.detailKindBadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-lift);
+  border: 1px solid var(--dark-border-2);
+  color: var(--gray-500);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* ── Detail sections ──────────────────────────────────────────────────────── */
+
+.detailSection { margin-bottom: 18px; }
+
+.detailSectionLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--subtitle);
+  margin: 0 0 4px;
+}
+
+.detailSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.typeNavLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--defradb);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 0;
+  transition: opacity 0.1s;
+}
+.typeNavLink:hover { opacity: 1; }
+
+/* ── Selectable row ───────────────────────────────────────────────────────── */
+
+.selectRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--dark-border);
+}
+
+.selectRowOn .rowName { color: var(--white); }
+
+.selectRowDisabled { opacity: 0.35; pointer-events: none; }
+
+.addBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--gray-500);
+  transition: color 0.15s;
+}
+.addBtn:hover  { color: var(--defradb); }
+.addBtnOn      { color: var(--defradb); }
+
+.rowLabel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  overflow: hidden;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: default;
+  text-align: left;
+}
+
+.rowLabelLink {
+  cursor: pointer;
+}
+.rowLabelLink:hover .rowName  { color: var(--white); }
+.rowLabelLink:hover .rowType  { opacity: 1; }
+
+.rowName {
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: color 0.1s;
+}
+
+.rowColon {
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--gray-600);
+  flex-shrink: 0;
+}
+
+.rowType {
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--defradb);
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.1s;
+}
+
+.rowChevron {
+  color: var(--gray-600);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+}
+.selectRow:hover .rowChevron { opacity: 1; }
+
+/* ── Field detail metadata ────────────────────────────────────────────────── */
+
+.detailDescription {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+
+.addBtnLgOn { opacity: 1 !important; }
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  align-items: baseline;
+}
+
+.metaKey {
+  font-size: 13px;
+  color: var(--gray-600);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.metaVal {
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--subtitle);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: default;
+  text-align: left;
+}
+
+.metaValLink {
+  cursor: pointer;
+  color: var(--defradb);
+  text-decoration: underline;
+  text-decoration-color: rgba(16,203,255,0.25);
+}
+.metaValLink:hover { text-decoration-color: var(--defradb); }
+
+/* ── Enum value rows ─────────────────────────────────────────────────────── */
+
+.enumValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--dark-border);
+}
+.enumValueRow:last-child { border-bottom: none; }
+
+.enumValueName {
+  font-family: 'CommitMono', monospace;
+  font-size: 13px;
+  color: var(--white);
+  flex-shrink: 0;
+}
+
+.enumValueDesc {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── Cursor nav toggle (lives at right of breadcrumb bar) ─────────────────── */
+
+.cursorToggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--gray-600);
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.cursorToggle:hover {
+  color: var(--muted);
+  border-color: var(--dark-border-2);
+}
+.cursorToggleOn {
+  color: var(--defradb);
+  border-color: rgba(16, 203, 255, 0.2);
+  background: rgba(16, 203, 255, 0.06);
+}
+.cursorToggleOn:hover {
+  background: rgba(16, 203, 255, 0.1);
+  border-color: rgba(16, 203, 255, 0.3);
+}
+
+/* Tiny live-tracking dot overlaid on the toggle when actively following cursor */
+.trackingDot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--defradb);
+  pointer-events: none;
+}
+
+/* ── List item management ─────────────────────────────────────────────────── */
+
+.listItems {
+  padding: 2px 0 4px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.listItemRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+.listItemRow:hover {
+  color: var(--white);
+  background: rgba(255,255,255,0.04);
+}
+
+.listItemDot {
+  color: var(--gray-600);
+  font-size: 14px;
+  line-height: 1;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.listItemLabel {
+  flex: 1;
+  font-family: 'CommitMono', monospace;
+}
+
+.listAddRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--gray-600);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  border-radius: 4px;
+  transition: color 0.1s;
+}
+.listAddRow:hover { color: var(--defradb); }
+
+.listAddPlus {
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+/* ── No results ───────────────────────────────────────────────────────────── */
+
+.noResults {
+  padding: 20px 14px;
+  font-size: 13px;
+  color: var(--gray-600);
+  text-align: center;
+}

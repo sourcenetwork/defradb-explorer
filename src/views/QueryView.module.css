@@ -1,0 +1,314 @@
+.view {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Schema panel (far left) ─────────────────────────────────────────────────*/
+.schemaPanel {
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--dark-border);
+}
+
+/* ── Main (tab bar + editor/results row) ─────────────────────────────────────*/
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mainContent {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Editor panel (center) ───────────────────────────────────────────────────*/
+.editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 40px;
+  border-bottom: 1px solid var(--dark-border);
+  background: var(--obsidian);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.panelLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray-600);
+  flex-shrink: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--gray-600);
+  font-family: 'CommitMono', monospace;
+}
+
+.queryArea {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Variables panel ─────────────────────────────────────────────────────────*/
+.varsPanel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--dark-border);
+  background: var(--obsidian);
+  overflow: hidden;
+  transition: height 0.15s ease;
+}
+
+.varsTabs {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0 4px;
+  gap: 2px;
+}
+
+.varsTab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.varsTab:hover { background: var(--dark-surface); color: var(--white); }
+.varsTabActive  { color: var(--white); }
+
+.varsDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--defradb);
+}
+
+.varsClear {
+  margin-left: auto;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+.varsClear:hover { color: var(--muted); }
+
+.varsEditor {
+  flex: 1;
+  overflow: hidden;
+  border-top: 1px solid var(--dark-border);
+}
+
+/* ── Results panel ───────────────────────────────────────────────────────────*/
+.results {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.resultsMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.metaChip {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface-lift);
+  color: var(--muted);
+}
+
+.metaChipCyan { color: var(--defradb); background: rgba(16,203,255,0.08); }
+.metaChipErr  { color: #FF5F57;        background: rgba(255,95,87,0.1); }
+
+.running {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  font-family: 'CommitMono', monospace;
+}
+
+.resultArea {
+  flex: 1;
+  overflow: hidden;
+}
+
+.placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--gray-600);
+  font-size: 12px;
+}
+
+/* ── Query tab bar ───────────────────────────────────────────────────────────*/
+.tabBar {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  flex-shrink: 0;
+  background: var(--obsidian);
+  border-bottom: 1px solid var(--dark-border);
+  padding: 0 4px;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabBar::-webkit-scrollbar { display: none; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: background 0.1s;
+}
+.tab:hover { background: var(--dark-surface); }
+.tabActive  { background: var(--surface-lift) !important; }
+
+.tabLabel {
+  height: 100%;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: 'CommitMono', monospace;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s;
+}
+.tab:hover .tabLabel { color: var(--subtitle); }
+.tabActive .tabLabel  { color: var(--white); }
+
+.tabClose {
+  width: 20px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--gray-600);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.1s;
+  padding: 0;
+  flex-shrink: 0;
+}
+.tabClose:hover { color: var(--white); }
+
+.tabAdd {
+  height: 26px;
+  width: 26px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--gray-600);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.tabAdd:hover { background: var(--dark-surface); color: var(--white); }
+
+/* ── Shared buttons ──────────────────────────────────────────────────────────*/
+.btnSm {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  color: var(--subtitle);
+  border: 1px solid var(--dark-border);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.btnSm:hover { border-color: var(--dark-border-2); color: var(--white); }
+.btnSm:disabled { opacity: 0.5; cursor: default; }
+
+.btnActive {
+  border-color: var(--defradb);
+  color: var(--defradb);
+}
+
+.btnPrimary {
+  background: var(--green-btn);
+  color: var(--black);
+  border-color: var(--green-btn);
+  min-width: 52px;
+  justify-content: center;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--green-hover);
+  border-color: var(--green-hover);
+  color: var(--black);
+}

@@ -1,0 +1,213 @@
+.view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* ── Stat row ──────────────────────────────────────────────────────────────── */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.statCard {
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.statLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray-600);
+  margin: 0 0 6px;
+}
+
+.statValue {
+  font-family: 'Funnel Display', Inter, sans-serif;
+  font-size: 1.6rem;
+  font-weight: 400;
+  color: var(--white);
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.statMono {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--muted);
+  padding-top: 6px;
+}
+
+/* ── Section ───────────────────────────────────────────────────────────────── */
+.section {}
+
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.sectionTitle {
+  font-family: 'Funnel Display', Inter, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--white);
+  margin: 0 0 14px;
+}
+
+.sectionMeta {
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+/* ── Collection summary list ───────────────────────────────────────────────── */
+.collSummary {
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.collRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dark-border);
+  transition: background 0.1s;
+}
+
+.collRow:last-child { border-bottom: none; }
+.collRow:hover      { background: rgba(255,255,255,0.02); }
+
+.collRowDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green-btn);
+  box-shadow: 0 0 5px var(--green-btn);
+  flex-shrink: 0;
+}
+
+.collRowName {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--white);
+  flex: 1;
+  min-width: 0;
+}
+
+.collRowCount {
+  font-family: 'Funnel Display', Inter, sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--white);
+  letter-spacing: -0.3px;
+  flex-shrink: 0;
+}
+
+.collRowLabel {
+  font-size: 12px;
+  color: var(--gray-600);
+  flex-shrink: 0;
+  min-width: 56px;
+}
+
+.collRowSkeleton {
+  height: 36px;
+  margin: 4px 16px;
+  border-radius: 4px;
+  background: var(--dark-border);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.7; }
+}
+
+/* ── Network grid ──────────────────────────────────────────────────────────── */
+.networkGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.netCard {
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border);
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+
+.netCardLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray-600);
+  margin: 0 0 12px;
+}
+
+.peerList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.peerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.peerDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--green-btn);
+  box-shadow: 0 0 5px var(--green-btn);
+}
+
+.peerDotOnline  { background: var(--green-btn); box-shadow: 0 0 5px var(--green-btn); }
+.peerDotOffline { background: var(--gray-600); box-shadow: none; }
+
+.peerId {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--white);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.peerAddr {
+  font-family: 'CommitMono', monospace;
+  font-size: 12px;
+  color: var(--gray-600);
+  flex-shrink: 0;
+}
+
+.netEmpty {
+  font-size: 12px;
+  color: var(--gray-600);
+  margin: 0;
+}
+
+.empty {
+  font-size: 13px;
+  color: var(--muted);
+}

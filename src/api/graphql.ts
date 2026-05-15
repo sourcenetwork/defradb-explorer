@@ -1,0 +1,195 @@
+import { getIntrospectionQuery } from 'graphql'
+import type { DefraConfig } from './client'
+import type { GraphQLResponse, IntrospectionResult, IntrospectionTypeRef, CollectionDescription } from './types'
+import { defraFetch } from './client'
+import { fetchCollections } from './collections'
+
+// ── Schema management ────────────────────────────────────────────────────────
+
+export async function createCollection(config: DefraConfig, sdl: string): Promise<CollectionDescription[]> {
+  const raw = await defraFetch<Record<string, unknown>[]>(config, '/collections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: sdl,
+  })
+  // POST returns the newly created collections with PascalCase keys — normalize via fetchCollections
+  // by re-fetching the names that came back
+  const names = new Set((raw ?? []).map(c => String(c.Name ?? c.name ?? '')).filter(Boolean))
+  if (names.size === 0) return []
+  const all = await fetchCollections(config)
+  return all.filter(c => names.has(c.name))
+}
+
+// Converts SDL like `type User { newField: String }` into a DefraDB JSON Patch string.
+// Each field becomes an "add" op at /<TypeName>/Fields/-.
+export function sdlToCollectionPatch(sdl: string): string {
+  const typeMatch = sdl.match(/type\s+(\w+)\s*\{([^}]*)\}/s)
+  if (!typeMatch) throw new Error('Could not parse SDL — expected `type TypeName { ... }`')
+
+  const typeName = typeMatch[1]
+  const body = typeMatch[2]
+
+  const ops: object[] = []
+  for (const line of body.split('\n')) {
+    const fieldMatch = line.trim().match(/^(\w+)\s*:\s*([\w[\]!]+)/)
+    if (!fieldMatch) continue
+    const [, name, kind] = fieldMatch
+    // Strip NonNull/List wrappers to get scalar name for Kind
+    const scalarName = kind.replace(/[[\]!]/g, '')
+    ops.push({ op: 'add', path: `/${typeName}/Fields/-`, value: { Name: name, Kind: scalarName } })
+  }
+
+  if (ops.length === 0) throw new Error('No fields found in SDL')
+  return JSON.stringify(ops)
+}
+
+export async function addFieldToCollection(
+  config: DefraConfig,
+  collectionName: string,
+  fieldName: string,
+  kind: string,
+  crdt?: string,
+): Promise<CollectionDescription[]> {
+  const value: Record<string, string> = { Name: fieldName, Kind: kind }
+  if (crdt) value.Typ = crdt
+  const patch = JSON.stringify([{ op: 'add', path: `/${collectionName}/Fields/-`, value }])
+  await defraFetch<unknown>(config, '/collections', {
+    method: 'PATCH',
+    body: JSON.stringify({ Patch: patch }),
+  })
+  const all = await fetchCollections(config)
+  return all.filter(c => c.name === collectionName)
+}
+
+export async function setCollectionActive(
+  config: DefraConfig,
+  collectionName: string,
+  isActive: boolean,
+): Promise<void> {
+  const patch = JSON.stringify([{ op: 'replace', path: `/${collectionName}/IsActive`, value: isActive }])
+  await defraFetch<unknown>(config, '/collections', {
+    method: 'PATCH',
+    body: JSON.stringify({ Patch: patch }),
+  })
+}
+
+export async function deleteCollectionByName(config: DefraConfig, collectionName: string): Promise<void> {
+  await defraFetch<unknown>(config, '/collections', {
+    method: 'DELETE',
+    body: JSON.stringify({ name: collectionName }),
+  })
+}
+
+export async function patchCollection(config: DefraConfig, sdl: string): Promise<CollectionDescription[]> {
+  const patch = sdlToCollectionPatch(sdl)
+  const typeMatch = sdl.match(/type\s+(\w+)/)
+  const typeName = typeMatch?.[1] ?? ''
+
+  await defraFetch<unknown>(config, '/collections', {
+    method: 'PATCH',
+    body: JSON.stringify({ Patch: patch }),
+  })
+
+  // Return only the patched collection (normalized)
+  const all = await fetchCollections(config)
+  return typeName ? all.filter(c => c.name === typeName) : []
+}
+
+// ── Core executor ────────────────────────────────────────────────────────────
+
+export async function executeGraphQL<T = Record<string, unknown>>(
+  config: DefraConfig,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<GraphQLResponse<T>> {
+  const url = `${config.baseUrl}/api/v0/graphql`
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (config.token) headers['Authorization'] = `Bearer ${config.token}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => res.statusText)
+    throw new Error(`HTTP ${res.status}: ${body}`)
+  }
+
+  return res.json() as Promise<GraphQLResponse<T>>
+}
+
+// ── Introspection ────────────────────────────────────────────────────────────
+
+// Use the standard full introspection query so buildClientSchema works for autocomplete
+const INTROSPECTION_QUERY = getIntrospectionQuery()
+
+export async function fetchIntrospection(config: DefraConfig): Promise<IntrospectionResult> {
+  const res = await executeGraphQL<IntrospectionResult>(config, INTROSPECTION_QUERY)
+  if (res.errors?.length) throw new Error(res.errors[0].message)
+  if (!res.data) throw new Error('Empty introspection response')
+  return res.data
+}
+
+// ── Schema helpers ───────────────────────────────────────────────────────────
+
+export function getBaseKind(type: IntrospectionTypeRef): string {
+  return type.kind === 'NON_NULL' || type.kind === 'LIST'
+    ? getBaseKind(type.ofType!)
+    : type.kind
+}
+
+export function isScalarField(type: IntrospectionTypeRef): boolean {
+  return getBaseKind(type) === 'SCALAR'
+}
+
+/** Build a paginated GraphQL query for a collection */
+/** Build a targeted single-field filter arg string. */
+export function buildSearchFilter(term: string, field: string, fieldType = 'String', op = ''): string {
+  if (!term.trim() || !field) return ''
+  const t = term.trim()
+
+  // Default operator by type
+  const defaultOp = (fieldType === 'String' && field !== '_docID') ? '_ilike' : '_eq'
+  const operator = op || defaultOp
+
+  // Coerce value to correct GraphQL literal
+  let value: string
+  if (fieldType === 'Boolean') {
+    value = t === 'true' ? 'true' : 'false'
+  } else if (fieldType === 'Int') {
+    const n = parseInt(t, 10)
+    if (isNaN(n)) return ''
+    value = String(n)
+  } else if (fieldType === 'Float') {
+    const n = parseFloat(t)
+    if (isNaN(n)) return ''
+    value = String(n)
+  } else if (['_ilike', '_nilike', '_like', '_nlike'].includes(operator)) {
+    value = JSON.stringify(`%${t}%`)
+  } else {
+    value = JSON.stringify(t)
+  }
+
+  return `filter: { ${field}: { ${operator}: ${value} } }`
+}
+
+export function buildDocumentsQuery(typeName: string, fields: string[], limit: number, offset: number, filterArg = ''): string {
+  const args = [filterArg, `limit: ${limit}`, `offset: ${offset}`].filter(Boolean).join(', ')
+  return `{ ${typeName}(${args}) {\n${fields.map(f => `    ${f}`).join('\n')}\n  } }`
+}
+
+/** Build a count query using DefraDB's top-level COUNT aggregate */
+export function buildCountQuery(typeName: string, filterArg = ''): string {
+  return filterArg
+    ? `{ COUNT(${typeName}: { ${filterArg} }) }`
+    : `{ COUNT(${typeName}: {}) }`
+}
+
+/** Build a single aliased query that fetches counts for all collections at once */
+export function buildAllCountsQuery(typeNames: string[]): string {
+  const lines = typeNames.map(n => `  ${n}: COUNT(${n}: {})`)
+  return `{\n${lines.join('\n')}\n}`
+}

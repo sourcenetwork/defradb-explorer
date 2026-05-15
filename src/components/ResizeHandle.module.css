@@ -1,0 +1,46 @@
+.handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background 0.15s;
+}
+
+.handle:hover .bar,
+.handle:active .bar {
+  background: var(--defradb);
+  opacity: 0.6;
+}
+
+/* horizontal: separates left/right panels, cursor is col-resize */
+.horizontal {
+  width: 5px;
+  cursor: col-resize;
+  flex-direction: column;
+  background: var(--dark-border);
+}
+
+.horizontal .bar {
+  width: 1px;
+  height: 32px;
+  border-radius: 1px;
+  background: var(--dark-border-2);
+  transition: background 0.15s, opacity 0.15s;
+}
+
+/* vertical: separates top/bottom panels, cursor is row-resize */
+.vertical {
+  height: 5px;
+  cursor: row-resize;
+  flex-direction: row;
+  background: var(--dark-border);
+}
+
+.vertical .bar {
+  height: 1px;
+  width: 32px;
+  border-radius: 1px;
+  background: var(--dark-border-2);
+  transition: background 0.15s, opacity 0.15s;
+}
