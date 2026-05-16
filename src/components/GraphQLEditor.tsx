@@ -8,6 +8,7 @@ import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt, updateSchema } from 'cm6-graphql'
 import { parse, print } from 'graphql'
 import type { GraphQLSchema } from 'graphql'
+import { gqlRootFieldHighlighter } from '../lib/syntaxDecorators'
 
 export interface GraphQLEditorHandle {
   prettify: () => void
@@ -17,22 +18,25 @@ export interface GraphQLEditorHandle {
 // ── Highlight style ───────────────────────────────────────────────────────────
 
 const graphqlHighlight = HighlightStyle.define([
-  { tag: tags.keyword,                     color: '#10CBFF' },           // query, mutation, fragment, on
-  { tag: tags.typeName,                    color: '#e0a96d' },           // type names
-  { tag: tags.propertyName,               color: '#a8d8ff' },           // field names
-  { tag: tags.name,                        color: '#cdd6f4' },           // general names
-  { tag: tags.variableName,               color: '#c792ea' },           // $variables
-  { tag: tags.string,                      color: '#39e265' },           // "strings"
-  { tag: tags.number,                      color: '#39e265' },           // numbers
-  { tag: tags.bool,                        color: '#10CBFF' },           // true / false
-  { tag: tags.null,                        color: '#6c7086' },           // null
-  { tag: tags.comment,                     color: '#6c7086', fontStyle: 'italic' },
-  { tag: tags.punctuation,                color: '#6c7086' },           // : , ( )
-  { tag: tags.bracket,                     color: '#89b4fa' },           // { }
-  { tag: tags.operator,                    color: '#10CBFF' },           // !  @
-  { tag: tags.meta,                        color: '#6c7086' },           // directives @
-  { tag: tags.attributeName,              color: '#c792ea' },           // directive args
+  { tag: tags.keyword,                       color: '#c792ea' },  // query, mutation, fragment, on
+  { tag: tags.definitionKeyword,             color: '#c792ea' },  // subscription
+  { tag: tags.modifier,                      color: '#c792ea' },  // @directives
+  { tag: tags.typeName,                      color: '#10CBFF' },  // type names (type conditions)
+  { tag: tags.atom,                          color: '#10CBFF' },  // Name nodes
+  { tag: tags.propertyName,                 color: '#a6e3a1' },  // field names: User, _docID, age
+  { tag: tags.attributeName,                color: '#e0a96d' },  // argument names: limit, filter
+  { tag: tags.name,                          color: '#cdd6f4' },  // general names
+  { tag: tags.variableName,                 color: '#c792ea' },  // $variables
   { tag: tags.definition(tags.variableName), color: '#c792ea' },
+  { tag: tags.special(tags.name),            color: '#10CBFF' },  // enum values
+  { tag: tags.string,                        color: '#39e265' },  // "strings"
+  { tag: tags.number,                        color: '#ffcb6b' },  // numbers
+  { tag: tags.bool,                          color: '#ffcb6b' },  // true / false
+  { tag: tags.null,                          color: '#6c7086' },  // null
+  { tag: tags.comment,                       color: '#6c7086', fontStyle: 'italic' },
+  { tag: tags.punctuation,                  color: '#6c7086' },  // : , ( )
+  { tag: tags.bracket,                       color: '#6c7086' },  // { }
+  { tag: tags.operator,                      color: '#6c7086' },  // !
 ])
 
 // ── Editor theme (structural styles only) ────────────────────────────────────
@@ -176,6 +180,7 @@ function GraphQLEditor({ value, onChange, onRun, schema, onCursorOffset }, ref) 
         placeholder('{ User { _docID name } }'),
         graphqlExt(),
         syntaxHighlighting(graphqlHighlight),
+        ...gqlRootFieldHighlighter(),
         autocompletion(),
         closeBrackets(),
         dashboardTheme,

@@ -1,6 +1,8 @@
 import { useState, useMemo, useRef, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
+import { Copy, Check, ChevronDown, Search, X, ArrowRight, RotateCw, GitBranch, Pencil } from 'lucide-react'
+import CommitGraph from '../components/CommitGraph'
 import { getNamedType, isInputObjectType, isNonNullType } from 'graphql'
-import { useDocuments, useDocumentCount, useDocumentAtVersion, useDocumentById, PAGE_SIZE } from '../hooks/useDocuments'
+import { useDocuments, useDocumentCount, useDocumentAtVersion, useDocumentById } from '../hooks/useDocuments'
 import { buildDocumentsQuery, buildSearchFilter } from '../api/graphql'
 import { useCollections } from '../hooks/useCollections'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
@@ -10,6 +12,7 @@ import {
 import type { FormValues, TypeMap } from '../hooks/useDocumentMutations'
 import { useDocumentCommits } from '../hooks/useCommits'
 import { useCollectionIndexes } from '../hooks/useCollectionIndexes'
+import { useUIStore } from '../store/uiStore'
 import styles from './CollectionsView.module.css'
 
 const OPERATORS_BY_TYPE: Record<string, string[]> = {
@@ -21,6 +24,48 @@ const OPERATORS_BY_TYPE: Record<string, string[]> = {
   DateTime: ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
 }
 
+function FieldValue({ value }: { value: unknown }) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (value === null || value === undefined)
+    return <span style={{ color: 'var(--gray-600)' }}>null</span>
+
+  if (typeof value === 'object') {
+    if (Array.isArray(value)) {
+      if (!expanded)
+        return <button className={styles.fieldValExpand} onClick={() => setExpanded(true)}>[{value.length} item{value.length !== 1 ? 's' : ''}]</button>
+      return (
+        <span>
+          <pre className={styles.fieldValPre}>{JSON.stringify(value, null, 2)}</pre>
+          <button className={styles.fieldValExpand} onClick={() => setExpanded(false)}>collapse</button>
+        </span>
+      )
+    }
+    const obj = value as Record<string, unknown>
+    if (obj._docID)
+      return <span className={styles.fieldValRef}>→ {String(obj._docID)}</span>
+    if (!expanded)
+      return <button className={styles.fieldValExpand} onClick={() => setExpanded(true)}>{'{object}'}</button>
+    return (
+      <span>
+        <pre className={styles.fieldValPre}>{JSON.stringify(value, null, 2)}</pre>
+        <button className={styles.fieldValExpand} onClick={() => setExpanded(false)}>collapse</button>
+      </span>
+    )
+  }
+
+  const str = String(value)
+  if (str.length > 200) {
+    if (/^[A-Za-z0-9+/]+=*$/.test(str))
+      return <span className={styles.fieldValMuted}>[binary ~{Math.round(str.length * 0.75 / 1024)} KB]</span>
+    if (!expanded)
+      return <span>{str.slice(0, 200)}<span className={styles.fieldValMuted}>…</span> <button className={styles.fieldValExpand} onClick={() => setExpanded(true)}>more</button></span>
+    return <span>{str} <button className={styles.fieldValExpand} onClick={() => setExpanded(false)}>less</button></span>
+  }
+
+  return <span>{str}</span>
+}
+
 function HistCopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   function copy() {
@@ -28,12 +73,7 @@ function HistCopyButton({ text }: { text: string }) {
   }
   return (
     <button className={`${styles.histCopyBtn} ${copied ? styles.histCopyBtnDone : ''}`} onClick={copy} title="Copy CID">
-      {copied ? '✓' : (
-        <svg width={10} height={10} viewBox="0 0 12 12" fill="none">
-          <rect x={4} y={4} width={7} height={7} rx={1.2} stroke="currentColor" strokeWidth={1.2}/>
-          <path d="M3 8H2a1 1 0 01-1-1V2a1 1 0 011-1h5a1 1 0 011 1v1" stroke="currentColor" strokeWidth={1.2}/>
-        </svg>
-      )}
+      {copied ? <Check size={10} /> : <Copy size={10} />}
     </button>
   )
 }
@@ -41,6 +81,7 @@ function HistCopyButton({ text }: { text: string }) {
 export interface CollectionsViewHandle {
   openNewDoc:  () => void
   exportDocs:  () => void
+  openDoc:     (docID: string) => void
 }
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -58,11 +99,13 @@ interface Props {
   onViewSchema?:           (name: string) => void
   onCollectionInvalid?:    () => void
   onOpenInQueryRunner?:    (query: string) => void
+  onViewCommitGraph?:      (docID: string) => void
 }
 
 export interface CollectionBrowserHandle {
   openNewDoc: () => void
   exportDocs: () => void
+  openDoc:    (docID: string) => void
 }
 
 const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function CollectionsView({ collection, onViewSchema, onCollectionInvalid, onOpenInQueryRunner }, ref) {
@@ -85,6 +128,7 @@ const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function Collec
   useImperativeHandle(ref, () => ({
     openNewDoc: () => browserRef.current?.openNewDoc(),
     exportDocs: () => browserRef.current?.exportDocs(),
+    openDoc:    (docID: string) => browserRef.current?.openDoc(docID),
   }))
 
   if (!effectiveCollection) {
@@ -111,8 +155,8 @@ export default CollectionsView
 // ── Browser ───────────────────────────────────────────────────────────────────
 
 const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: string; onViewSchema?: (name: string) => void; onOpenInQueryRunner?: (query: string) => void }>(function CollectionBrowser({ collection, onViewSchema, onOpenInQueryRunner }, ref) {
+  const { collectionsPageSize: pageSize, setCollectionsPageSize: setPageSize } = useUIStore()
   const [page, setPage]           = useState(1)
-  const [pageSize, setPageSize]   = useState(PAGE_SIZE)
   const [filter, setFilter]       = useState('')
   const [searchField, setSearchField] = useState('_docID')
   const [searchOp, setSearchOp]   = useState('')
@@ -133,6 +177,9 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
     setSearchOp('')
     setPage(1)
   }, [searchField])
+
+  const { data: collections } = useCollections()
+  const collectionMeta = collections?.find(c => c.name === collection)
 
   const gqlSchema  = useGraphQLSchema()
   const createMut  = useCreateDocument(collection)
@@ -163,8 +210,15 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
     [formFields],
   )
 
+  // visibleFields drives the fetch — initialized empty, populated once data arrives
+  const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set())
+  // Cache the full field list returned by the first query so we know which system
+  // fields (like _docID) actually exist for this collection/view.
+  const [schemaFields, setSchemaFields] = useState<string[] | null>(null)
+
+  const hasDocID = !schemaFields || schemaFields.includes('_docID')
   const searchableFields = [
-    { name: '_docID', typeName: 'ID' },
+    ...(hasDocID ? [{ name: '_docID', typeName: 'ID' }] : []),
     ...formFields,
   ]
 
@@ -172,14 +226,14 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const availableOps = OPERATORS_BY_TYPE[searchFieldType] ?? OPERATORS_BY_TYPE.String
   const effectiveOp = searchOp || availableOps[0]
 
-  // visibleFields drives the fetch — initialized empty, populated once data arrives
-  const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set())
-
-  // Always include system fields plus whatever is visible
+  // Phase 1: schemaFields=null → fetch everything (let the API return the full field list).
+  // Phase 2: schemaFields known → only request visible fields + valid system fields.
+  // This prevents sending _docID to Views that don't have it.
   const fetchFields = useMemo(() => {
-    if (visibleFields.size === 0) return undefined
-    return [...new Set(['_docID', '_deleted', ...visibleFields])]
-  }, [visibleFields])
+    if (!schemaFields) return undefined
+    const systemFields = ['_docID', '_deleted'].filter(f => schemaFields.includes(f))
+    return [...new Set([...systemFields, ...visibleFields])]
+  }, [schemaFields, visibleFields])
 
   const { data, isLoading, isError, error, refetch } = useDocuments(collection, page, search, searchField, searchFieldType, effectiveOp, pageSize, fetchFields)
   const { data: totalCount = 0 } = useDocumentCount(collection, search, searchField, searchFieldType, effectiveOp)
@@ -193,7 +247,14 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const displayFields = fields.filter(f => f === '_docID' || !f.startsWith('_'))
 
   useEffect(() => {
-    if (displayFields.length > 0) setVisibleFields(new Set(displayFields.slice(0, 7)))
+    if (fields.length > 0) {
+      setSchemaFields(fields)
+      setVisibleFields(new Set(displayFields.slice(0, 7)))
+      // If this type has no _docID (e.g. a View), reset the search field to the first available
+      if (!fields.includes('_docID') && searchField === '_docID') {
+        setSearchField(formFields[0]?.name ?? '')
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection, fields.join(',')])
 
@@ -221,6 +282,11 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   useImperativeHandle(ref, () => ({
     openNewDoc: () => setShowNewDoc(true),
     exportDocs: handleExport,
+    openDoc: (docID: string) => {
+      setSearchField('_docID')
+      setFilter(docID)
+      setPage(1)
+    },
   }))
 
   const offset = (page - 1) * pageSize
@@ -238,6 +304,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
         collection={collection}
         count={totalCount}
         fieldCount={displayFields.length}
+        isBranchable={collectionMeta?.is_branchable ?? false}
         onViewSchema={onViewSchema}
       />
       <Toolbar
@@ -285,6 +352,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
               fields={tableFields}
               selectedIdx={selectedIdx}
               onSelect={setSelectedIdx}
+              onNewDoc={() => setShowNewDoc(true)}
             />
           )}
 
@@ -315,6 +383,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
             }}
             updatePending={updateMut.isPending}
             deletePending={deleteMut.isPending}
+            onOpenInQueryRunner={onOpenInQueryRunner}
           />
         )}
       </div>  {/* split */}
@@ -352,19 +421,18 @@ function QueryPreview({ query, hasFilter, onOpenInQueryRunner }: { query: string
   return (
     <div className={styles.queryPreview}>
       <button className={styles.queryPreviewToggle} onClick={() => setOpen(v => !v)}>
-        <svg
+        <ChevronDown
+          size={10}
           className={`${styles.queryPreviewChevron} ${open ? styles.queryPreviewChevronOpen : ''}`}
-          width={8} height={8} viewBox="0 0 8 8" fill="none" aria-hidden="true"
-        >
-          <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+          aria-hidden="true"
+        />
         Query{hasFilter && <span className={styles.queryPreviewFilterDot} />}
       </button>
       {open && (
         <div className={styles.queryPreviewBody}>
           <div className={styles.queryPreviewActions}>
             {onOpenInQueryRunner && (
-              <button className={styles.queryPreviewCopy} onClick={() => onOpenInQueryRunner(query)}>
+              <button className={styles.queryPreviewOpenBtn} onClick={() => onOpenInQueryRunner(query)}>
                 Open in Query Runner
               </button>
             )}
@@ -412,14 +480,22 @@ function IndexesBar({ collection }: { collection: string }) {
 
 // ── Stats row ─────────────────────────────────────────────────────────────────
 
-function StatsRow({ collection, count, fieldCount, onViewSchema }: {
-  collection: string; count: number; fieldCount: number
+function StatsRow({ collection, count, fieldCount, isBranchable, onViewSchema }: {
+  collection: string; count: number; fieldCount: number; isBranchable?: boolean
   onViewSchema?: (name: string) => void
 }) {
   return (
     <div className={styles.statsRow}>
       <div className={styles.statsMain}>
-        <h1 className={styles.statsCollection}>{collection}</h1>
+        <div className={styles.statsTitleRow}>
+          <h1 className={styles.statsCollection}>{collection}</h1>
+          {isBranchable && (
+            <span className={styles.branchBadge} title="This collection tracks verifiable collection-level history">
+              <GitBranch size={10} />
+              branchable
+            </span>
+          )}
+        </div>
         <div className={styles.statsMeta}>
           <span className={styles.statsMetaItem}>
             <span className={styles.statsMetaValue}>{count.toLocaleString()}</span>
@@ -435,9 +511,7 @@ function StatsRow({ collection, count, fieldCount, onViewSchema }: {
       {onViewSchema && (
         <button className={styles.viewSchemaBtn} onClick={() => onViewSchema(collection)}>
           View schema
-          <svg width={9} height={9} viewBox="0 0 10 10" fill="none">
-            <path d="M2 5h6M5 2l3 3-3 3" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <ArrowRight size={10} />
         </button>
       )}
     </div>
@@ -506,9 +580,7 @@ function PaginationBar({ page, totalPages, pageSize, totalCount, offset, rowCoun
             <option key={n} value={n}>{n} / page</option>
           ))}
         </select>
-        <svg className={styles.searchFieldCaret} width={8} height={8} viewBox="0 0 8 8" fill="none" aria-hidden="true">
-          <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <ChevronDown size={8} className={styles.searchFieldCaret} aria-hidden="true" />
       </div>
     </div>
   )
@@ -568,9 +640,7 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
             <option value="">Field…</option>
             {searchableFields.map(f => <option key={f.name} value={f.name}>{f.name}</option>)}
           </select>
-          <svg className={styles.searchFieldCaret} width={8} height={8} viewBox="0 0 8 8" fill="none" aria-hidden="true">
-            <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <ChevronDown size={8} className={styles.searchFieldCaret} aria-hidden="true" />
         </div>
         <span className={styles.searchFieldSep} />
         <div className={styles.searchFieldWrap}>
@@ -584,18 +654,13 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
               <option key={o} value={o}>{o}</option>
             ))}
           </select>
-          <svg className={styles.searchFieldCaret} width={8} height={8} viewBox="0 0 8 8" fill="none" aria-hidden="true">
-            <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <ChevronDown size={8} className={styles.searchFieldCaret} aria-hidden="true" />
         </div>
         <span className={styles.searchFieldSep} />
         {searching ? (
           <span className={styles.toolbarSpinner} aria-hidden="true" />
         ) : (
-          <svg width={11} height={11} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0, color: 'var(--gray-600)' }}>
-            <circle cx={7} cy={7} r={5} stroke="currentColor" strokeWidth={1.5}/>
-            <line x1={11} y1={11} x2={14} y2={14} stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"/>
-          </svg>
+          <Search size={11} style={{ flexShrink: 0, color: 'var(--gray-600)' }} />
         )}
         <div className={styles.searchInputWrap}>
           {wildcardOp && <span className={styles.searchWildcard}>%</span>}
@@ -609,10 +674,7 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
           {wildcardOp && <span className={styles.searchWildcard}>%</span>}
           {filter && (
             <button className={styles.searchClear} onClick={() => onFilterChange('')} aria-label="Clear search">
-              <svg width={8} height={8} viewBox="0 0 8 8" fill="none" aria-hidden="true">
-                <line x1={1} y1={1} x2={7} y2={7} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round"/>
-                <line x1={7} y1={1} x2={1} y2={7} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round"/>
-              </svg>
+              <X size={8} />
             </button>
           )}
         </div>
@@ -641,23 +703,29 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
           </div>
         )}
       </div>
-      <button className={`${styles.btnSm} ${styles.btnCyan}`} onClick={onRefresh}>↺ Refresh</button>
+      <button className={`${styles.btnSm} ${styles.btnCyan}`} onClick={onRefresh} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><RotateCw size={11} /> Refresh</button>
     </div>
   )
 }
 
 // ── Document table ────────────────────────────────────────────────────────────
 
-function DocumentTable({ rows, fields, selectedIdx, onSelect }: {
+function DocumentTable({ rows, fields, selectedIdx, onSelect, onNewDoc }: {
   rows:        Record<string, unknown>[]
   fields:      string[]
   selectedIdx: number | null
   onSelect:    (i: number) => void
+  onNewDoc?:   () => void
 }) {
   if (rows.length === 0) {
     return (
       <div className={styles.emptyTable}>
         <p>No documents in this collection.</p>
+        {onNewDoc && (
+          <button className={styles.emptyTableCta} onClick={onNewDoc}>
+            + Add first document
+          </button>
+        )}
       </div>
     )
   }
@@ -701,25 +769,42 @@ function formatCell(field: string, value: unknown): string {
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
 
-type PanelMode = 'view' | 'edit' | 'history'
+type PanelMode = 'view' | 'history' | 'graph'
 
-function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, onDelete, updatePending, deletePending }: {
-  doc:           Record<string, unknown>
-  fields:        string[]
-  collection:    string
-  formFields:    FormField[]
-  onClose:       () => void
-  onUpdate:      (docID: string, values: FormValues, original: FormValues) => Promise<unknown>
-  onDelete:      (docID: string) => Promise<void>
-  updatePending: boolean
-  deletePending: boolean
+function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
+  doc:                Record<string, unknown>
+  fields:             string[]
+  collection:         string
+  formFields:         FormField[]
+  onClose:            () => void
+  onUpdate:           (docID: string, values: FormValues, original: FormValues) => Promise<unknown>
+  onDelete:           (docID: string) => Promise<void>
+  updatePending:      boolean
+  deletePending:      boolean
+  onOpenInQueryRunner?: (query: string) => void
 }) {
   const docID = String(doc._docID ?? '')
   const [mode, setMode]                 = useState<PanelMode>('view')
-  const [editValues, setEditValues]     = useState<FormValues>({})
+  const [editValues, setEditValues]       = useState<FormValues>({})
+  const [isEditing, setIsEditing]         = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
-  const [mutErr, setMutErr]             = useState<string | null>(null)
-  const [openCids, setOpenCids] = useState<Set<string>>(new Set())
+  const [mutErr, setMutErr]               = useState<string | null>(null)
+  const [openCids, setOpenCids]           = useState<Set<string>>(new Set())
+  const [panelWidth, setPanelWidth]       = useState(() => Math.round(window.innerWidth / 2))
+  const panelRef = useRef<HTMLElement>(null)
+
+  function startPanelResize(e: React.MouseEvent) {
+    e.preventDefault()
+    const startX     = e.clientX
+    const startWidth = panelWidth
+    const onMove = (ev: MouseEvent) => {
+      const containerW = (panelRef.current?.offsetParent as HTMLElement)?.offsetWidth ?? window.innerWidth - 120
+      setPanelWidth(Math.max(320, Math.min(containerW - 8, startWidth - (ev.clientX - startX))))
+    }
+    const onUp   = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   function toggleCid(cid: string) {
     setOpenCids(prev => {
@@ -729,14 +814,10 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
     })
   }
 
-  // Always fetched — drives both the version badge in the header and the history panel
   const { data: commits, isLoading: histLoading, error: histError, refetch: refetchCommits } = useDocumentCommits(docID)
-
-  // Full document fetch for the Fields view (table rows only carry visible columns)
-  const { data: fullDoc } = useDocumentById(collection, docID, fields)
+  const { data: fullDoc, refetch: refetchDoc } = useDocumentById(collection, docID, fields)
   const currentVersion = commits?.[0]?.height ?? null
 
-  // Fields to show in the edit form — fall back to doc keys if schema not loaded
   const editableFields: FormField[] = formFields.length > 0
     ? formFields
     : fields.filter(f => f !== '_docID' && !f.startsWith('_')).map(f => ({ name: f, typeName: 'String', required: false }))
@@ -750,7 +831,12 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
     }
     setEditValues(init)
     setMutErr(null)
-    setMode('edit')
+    setIsEditing(true)
+  }
+
+  function cancelEdit() {
+    setIsEditing(false)
+    setMutErr(null)
   }
 
   async function saveEdit() {
@@ -763,7 +849,8 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
         if (v !== null && v !== undefined) original[f.name] = String(v)
       }
       await onUpdate(docID, editValues, original)
-      setMode('view')
+      setIsEditing(false)
+      refetchDoc()
       refetchCommits()
     } catch (e) {
       setMutErr((e as Error).message)
@@ -780,7 +867,8 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
   }
 
   return (
-    <aside className={styles.detail}>
+    <aside ref={panelRef} className={styles.detail} style={{ width: panelWidth }}>
+      <div className={styles.detailResizeHandle} onMouseDown={startPanelResize} />
       {/* Header */}
       <div className={styles.detailHeader}>
         <div className={styles.detailNameRow}>
@@ -790,93 +878,101 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
           )}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {mode === 'edit' && (
+          {isEditing && mode === 'view' && (
             <>
-              <button className={styles.btnSmEdit} onClick={() => { setMode('view'); setMutErr(null) }}>Cancel</button>
+              <button className={styles.btnSmEdit} onClick={cancelEdit}>Cancel</button>
               <button className={`${styles.btnSmEdit} ${styles.btnSmEditSave}`} onClick={saveEdit} disabled={updatePending}>
                 {updatePending ? 'Saving…' : 'Save'}
               </button>
             </>
           )}
-          <button className={styles.panelCloseBtn} onClick={onClose} aria-label="Close panel">✕</button>
+          <button className={styles.panelCloseBtn} onClick={onClose} aria-label="Close panel">
+            <X size={14} />
+          </button>
         </div>
       </div>
 
       {/* Tab bar */}
       <div className={styles.detailTabs}>
-        <button className={`${styles.detailTab} ${mode === 'view' ? styles.detailTabActive : ''}`} onClick={() => setMode('view')}>
+        <button className={`${styles.detailTab} ${mode === 'view' ? styles.detailTabActive : ''}`}
+          onClick={() => { setMode('view'); setIsEditing(false); setMutErr(null) }}>
           Fields
         </button>
-        <button className={`${styles.detailTab} ${mode === 'edit' ? styles.detailTabActive : ''}`} onClick={startEdit}>
-          Edit
-        </button>
-        <button className={`${styles.detailTab} ${mode === 'history' ? styles.detailTabActive : ''}`} onClick={() => setMode('history')}>
+        <button className={`${styles.detailTab} ${mode === 'history' ? styles.detailTabActive : ''}`}
+          onClick={() => { setMode('history'); setIsEditing(false) }}>
           History
           {currentVersion !== null && (
             <span className={`${styles.detailTabBadge} ${mode === 'history' ? styles.detailTabBadgeActive : ''}`}>{currentVersion}</span>
           )}
+        </button>
+        <button className={`${styles.detailTab} ${mode === 'graph' ? styles.detailTabActive : ''}`}
+          onClick={() => { setMode('graph'); setIsEditing(false) }}>
+          <GitBranch size={11} /> Graph
         </button>
       </div>
 
       {mutErr && <div className={styles.detailError}>{mutErr}</div>}
 
       {/* Body */}
-      <div className={styles.detailBody}>
+      <div className={mode === 'graph' ? styles.detailBodyGraph : styles.detailBody}>
         {mode === 'view' && (
           <>
-            <p className={styles.detailSectionLabel}>Fields</p>
-            {fields.map(f => {
-              const viewDoc = fullDoc ?? doc
-              return (
-                <div key={f} className={styles.fieldGroup}>
-                  <div className={styles.fieldKeyRow}>
-                    <p className={styles.fieldKey}>{f}</p>
-                    {f === '_docID' && viewDoc[f] != null && (
-                      <HistCopyButton text={String(viewDoc[f])} />
-                    )}
-                  </div>
-                  <p className={`${styles.fieldVal} ${f === '_docID' ? styles.fieldValMono : ''}`}>
-                    {viewDoc[f] !== undefined && viewDoc[f] !== null
-                      ? String(viewDoc[f])
-                      : <span style={{ color: 'var(--gray-600)' }}>null</span>
-                    }
-                  </p>
-                </div>
-              )
-            })}
-          </>
-        )}
+            {/* Fields section header with Edit toggle */}
+            <div className={styles.detailSectionLabelRow}>
+              <p className={styles.detailSectionLabel}>Fields</p>
+              {editableFields.length > 0 && !isEditing && (
+                <button className={styles.editToggleBtn} onClick={startEdit}>
+                  <Pencil size={10} /> Edit
+                </button>
+              )}
+            </div>
 
-        {mode === 'edit' && (
-          <>
-            <p className={styles.detailSectionLabel}>Edit fields</p>
-            {editableFields.map(f => (
-              <div key={f.name} className={styles.fieldGroup}>
-                <p className={styles.fieldKey}>
-                  {f.name}&thinsp;<span className={styles.fieldKeyType}>{f.typeName}</span>
-                  {f.required && <span className={styles.fieldKeyRequired}> *</span>}
-                </p>
-                {f.typeName === 'Boolean' ? (
-                  <select
-                    className={styles.fieldInput}
-                    value={editValues[f.name] ?? ''}
-                    onChange={e => setEditValues(p => ({ ...p, [f.name]: e.target.value }))}
-                  >
-                    <option value="">— null —</option>
-                    <option value="true">true</option>
-                    <option value="false">false</option>
-                  </select>
-                ) : (
-                  <input
-                    className={styles.fieldInput}
-                    type={f.typeName === 'Int' || f.typeName === 'Float' ? 'number' : 'text'}
-                    value={editValues[f.name] ?? ''}
-                    onChange={e => setEditValues(p => ({ ...p, [f.name]: e.target.value }))}
-                    placeholder={f.required ? 'required' : 'optional'}
-                  />
-                )}
-              </div>
-            ))}
+            {isEditing ? (
+              editableFields.map(f => (
+                <div key={f.name} className={styles.fieldGroup}>
+                  <p className={styles.fieldKey}>
+                    {f.name}&thinsp;<span className={styles.fieldKeyType}>{f.typeName}</span>
+                    {f.required && <span className={styles.fieldKeyRequired}> *</span>}
+                  </p>
+                  {f.typeName === 'Boolean' ? (
+                    <select
+                      className={styles.fieldInput}
+                      value={editValues[f.name] ?? ''}
+                      onChange={e => setEditValues(p => ({ ...p, [f.name]: e.target.value }))}
+                    >
+                      <option value="">— null —</option>
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  ) : (
+                    <input
+                      className={styles.fieldInput}
+                      type={f.typeName === 'Int' || f.typeName === 'Float' ? 'number' : 'text'}
+                      value={editValues[f.name] ?? ''}
+                      onChange={e => setEditValues(p => ({ ...p, [f.name]: e.target.value }))}
+                      placeholder={f.required ? 'required' : 'optional'}
+                    />
+                  )}
+                </div>
+              ))
+            ) : (
+              fields.map(f => {
+                const viewDoc = fullDoc ?? doc
+                return (
+                  <div key={f} className={styles.fieldGroup}>
+                    <div className={styles.fieldKeyRow}>
+                      <p className={styles.fieldKey}>{f}</p>
+                      {f === '_docID' && viewDoc[f] != null && (
+                        <HistCopyButton text={String(viewDoc[f])} />
+                      )}
+                    </div>
+                    <p className={`${styles.fieldVal} ${f === '_docID' ? styles.fieldValMono : ''}`}>
+                      <FieldValue value={viewDoc[f]} />
+                    </p>
+                  </div>
+                )
+              })
+            )}
           </>
         )}
 
@@ -887,7 +983,7 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
                 {docID.slice(0, 20)}…
               </p>
               <button className={styles.histRefreshBtn} onClick={() => refetchCommits()} disabled={histLoading} title="Refresh">
-                ↺
+                <RotateCw size={11} />
               </button>
             </div>
             {histLoading && <p className={styles.histEmpty}>Loading…</p>}
@@ -901,27 +997,32 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
                 if (!byHeight.has(c.height)) byHeight.set(c.height, [])
                 byHeight.get(c.height)!.push(c)
               }
-              // Build a map from height → composite CID for parent lookups
               const compositeCidByHeight = new Map<number, string>()
               for (const [h, group] of byHeight) {
                 const comp = group.find(c => c.fieldName === '_C')
                 if (comp) compositeCidByHeight.set(h, comp.cid)
               }
+              const maxHeight = Math.max(...byHeight.keys())
               return [...byHeight.entries()]
                 .sort(([a], [b]) => b - a)
                 .map(([height, group]) => {
                   const composite    = group.find(c => c.fieldName === '_C')
                   const cid          = composite?.cid ?? group[0]?.cid ?? ''
                   const parentCID    = compositeCidByHeight.get(height - 1) ?? null
-                  // All links on a composite (excluding the _C back-pointer) are the fields changed in that commit
                   const changedLinks = composite?.links.filter(l => l.fieldName && l.fieldName !== '_C') ?? []
                   const shortCid     = cid.length > 20 ? `${cid.slice(0, 10)}…${cid.slice(-6)}` : cid
                   const shortParent  = parentCID && parentCID.length > 16 ? `${parentCID.slice(0, 8)}…${parentCID.slice(-4)}` : parentCID
-                  const isOpen = openCids.has(cid)
+                  const isOpen   = openCids.has(cid)
+                  const isHead   = height === maxHeight
+                  const isRoot   = height === 1
+                  const isMerge  = (byHeight.get(height - 1)?.filter(c => c.fieldName === '_C').length ?? 0) > 1
                   return (
                     <div key={height} className={`${styles.histVersion} ${isOpen ? styles.histVersionOpen : ''}`} onClick={() => toggleCid(cid)}>
                       <div className={styles.histVersionHead}>
                         <span className={styles.histHeight}>v{height}</span>
+                        {isHead  && <span className={styles.tagHead}>head</span>}
+                        {isMerge && <span className={styles.tagMerge}>merge</span>}
+                        {isRoot  && <span className={styles.tagRoot}>root</span>}
                         <div className={styles.histCidRow}>
                           <span className={styles.histCid} title={cid}>{shortCid}</span>
                           <span onClick={e => e.stopPropagation()}>
@@ -931,7 +1032,7 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
                         {shortParent && (
                           <span className={styles.histParent} title={parentCID ?? ''}>← {shortParent}</span>
                         )}
-                        <span className={styles.histChevron}>{isOpen ? '▲' : '▼'}</span>
+                        <ChevronDown size={12} className={`${styles.histChevron} ${isOpen ? styles.histChevronOpen : ''}`} />
                       </div>
                       {changedLinks.length > 0 && (
                         <div className={styles.histFieldTags}>
@@ -956,19 +1057,21 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
             })()}
           </>
         )}
+
+        {mode === 'graph' && (
+          <CommitGraph docID={docID} collection={collection} onOpenInQueryRunner={onOpenInQueryRunner} />
+        )}
       </div>
 
-      {/* Footer actions */}
-      <div className={styles.detailActions}>
+      {/* Footer actions — only shown in fields view */}
+      {mode === 'view' && <div className={styles.detailActions}>
         {!deleteConfirm ? (
-          <>
-            <button
-              className={`${styles.btnSmAction} ${styles.btnSmActionDanger}`}
-              onClick={() => setDeleteConfirm(true)}
-            >
-              Delete
-            </button>
-          </>
+          <button
+            className={`${styles.btnSmAction} ${styles.btnSmActionDanger}`}
+            onClick={() => setDeleteConfirm(true)}
+          >
+            Delete
+          </button>
         ) : (
           <div className={styles.deleteConfirm}>
             <span className={styles.deleteConfirmLabel}>Delete this document?</span>
@@ -987,7 +1090,7 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
             </button>
           </div>
         )}
-      </div>
+      </div>}
     </aside>
   )
 }

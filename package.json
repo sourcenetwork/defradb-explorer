@@ -26,8 +26,11 @@
     "@xyflow/react": "^12.10.2",
     "cm6-graphql": "^0.2.1",
     "graphql": "^16.14.0",
+    "html-to-image": "^1.11.13",
+    "lucide-react": "^1.16.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

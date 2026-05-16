@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useState, useCallback, useRef, forwardRef, useImperativeHandle, useMemo } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useConfig } from '../context/ConfigContext'
 import { executeGraphQL } from '../api/graphql'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
+import { useCollections } from '../hooks/useCollections'
 import type { GraphQLResponse } from '../api/types'
 import GraphQLEditor from '../components/GraphQLEditor'
 import type { GraphQLEditorHandle } from '../components/GraphQLEditor'
@@ -10,12 +11,17 @@ import JsonEditor from '../components/JsonEditor'
 import JsonViewer from '../components/JsonViewer'
 import SchemaExplorer from '../components/SchemaExplorer'
 import ResizeHandle from '../components/ResizeHandle'
+import { useUIStore } from '../store/uiStore'
 import styles from './QueryView.module.css'
 
 // ── Public handle ─────────────────────────────────────────────────────────────
 
 export interface QueryViewHandle {
   openQuery: (query: string) => void
+}
+
+export interface QueryViewProps {
+  onOpenInCollections?: (collection: string, docID: string) => void
 }
 
 // ── Tab model ─────────────────────────────────────────────────────────────────
@@ -36,6 +42,61 @@ const DEFAULT_QUERY = `{
     email
     role
     createdAt
+  }
+}`
+
+const INTROSPECTION_QUERY = `{
+  __schema {
+    queryType { name }
+    mutationType { name }
+    types {
+      name
+      kind
+      description
+      fields {
+        name
+        description
+        type {
+          name
+          kind
+          ofType {
+            name
+            kind
+            ofType {
+              name
+              kind
+            }
+          }
+        }
+        args {
+          name
+          type {
+            name
+            kind
+            ofType {
+              name
+              kind
+            }
+          }
+          defaultValue
+        }
+      }
+      inputFields {
+        name
+        type {
+          name
+          kind
+          ofType {
+            name
+            kind
+          }
+        }
+      }
+      enumValues {
+        name
+        description
+      }
+    }
   }
 }`
 
@@ -77,20 +138,38 @@ function saveTabs(tabs: QueryTab[], activeTabId: string) {
   } catch {}
 }
 
+// ── Result doc extraction ─────────────────────────────────────────────────────
+
+function extractResultDocs(result: GraphQLResponse | null, knownCollections: Set<string>): { collection: string; docID: string }[] {
+  if (!result?.data) return []
+  const out: { collection: string; docID: string }[] = []
+  for (const [key, val] of Object.entries(result.data)) {
+    if (!knownCollections.has(key)) continue
+    const rows = Array.isArray(val) ? val : []
+    for (const row of rows) {
+      if (row && typeof row === 'object' && typeof row._docID === 'string') {
+        out.push({ collection: key, docID: row._docID })
+      }
+    }
+  }
+  return out
+}
+
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 const MIN_PANEL      = 180
 const MIN_SCHEMA     = 240
 const MIN_RESULTS    = 220
 const MIN_VARS       = 60
-const DEFAULT_VARS_H = 120
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const QueryView = forwardRef<QueryViewHandle>(function QueryView(_, ref) {
+const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView({ onOpenInCollections }, ref) {
   const { config } = useConfig()
   const schema     = useGraphQLSchema()
   const editorRef  = useRef<GraphQLEditorHandle>(null)
+  const { data: collections } = useCollections()
+  const knownCollections = useMemo(() => new Set(collections?.map(c => c.name) ?? []), [collections])
 
   // ── Tab state ──────────────────────────────────────────────────────────────
 
@@ -165,29 +244,40 @@ const QueryView = forwardRef<QueryViewHandle>(function QueryView(_, ref) {
 
   // ── Layout state ───────────────────────────────────────────────────────────
 
-  const [showSchema, setShowSchema]   = useState(true)
-  const [varsOpen, setVarsOpen]       = useState(false)
-  const [varsHeight, setVarsHeight]   = useState(DEFAULT_VARS_H)
+  const {
+    queryShowSchema: showSchema, setQueryShowSchema: setShowSchema,
+    queryVarsOpen: varsOpen,     setQueryVarsOpen: setVarsOpen,
+    queryVarsHeight: varsHeight, setQueryVarsHeight: setVarsHeight,
+    querySchemaWidth: schemaWidth, setQuerySchemaWidth: setSchemaWidth,
+  } = useUIStore()
   const [editorWidth, setEditorWidth] = useState<number | null>(null)
-  const [schemaWidth, setSchemaWidth] = useState(320)
   const [cursorOffset, setCursorOffset] = useState<number | null>(null)
+
+  const schemaWidthRef = useRef(schemaWidth)
+  schemaWidthRef.current = schemaWidth
+
+  const varsHeightRef = useRef(varsHeight)
+  varsHeightRef.current = varsHeight
+
+  const varsOpenRef = useRef(varsOpen)
+  varsOpenRef.current = varsOpen
 
   const onResizeEditorResults = useCallback((delta: number) => {
     setEditorWidth(prev => {
       const container = document.querySelector('[data-query-view]') as HTMLElement | null
       const total = container?.offsetWidth ?? 1000
-      const current = prev ?? (total - schemaWidth) / 2
-      return Math.max(MIN_PANEL, Math.min(total - schemaWidth - MIN_RESULTS, current + delta))
+      const current = prev ?? (total - schemaWidthRef.current) / 2
+      return Math.max(MIN_PANEL, Math.min(total - schemaWidthRef.current - MIN_RESULTS, current + delta))
     })
-  }, [schemaWidth])
+  }, [])
 
   const onResizeSchema = useCallback((delta: number) => {
-    setSchemaWidth(prev => Math.max(MIN_SCHEMA, Math.min(500, prev + delta)))
-  }, [])
+    setSchemaWidth(Math.max(MIN_SCHEMA, Math.min(500, schemaWidthRef.current + delta)))
+  }, [setSchemaWidth])
 
   const onResizeVars = useCallback((delta: number) => {
-    setVarsHeight(prev => Math.max(MIN_VARS, Math.min(400, prev - delta)))
-  }, [])
+    setVarsHeight(Math.max(MIN_VARS, Math.min(400, varsHeightRef.current - delta)))
+  }, [setVarsHeight])
 
   // ── Query execution ────────────────────────────────────────────────────────
 
@@ -273,14 +363,14 @@ const QueryView = forwardRef<QueryViewHandle>(function QueryView(_, ref) {
         <div className={styles.panelHeader}>
           <span className={styles.panelLabel}>Query</span>
           <div className={styles.headerActions}>
-            <span className={styles.hint}>⌘↵</span>
             <button className={styles.btnSm} onClick={() => editorRef.current?.prettify()} title="Format query">
               Prettify
             </button>
             <button className={styles.btnSm} onClick={() => setQuery(DEFAULT_QUERY)}>Reset</button>
+            <button className={styles.btnSm} onClick={() => setQuery(INTROSPECTION_QUERY)} title="Load introspection query">Introspection</button>
             <button
               className={`${styles.btnSm} ${showSchema ? styles.btnActive : ''}`}
-              onClick={() => setShowSchema(s => !s)}
+              onClick={() => setShowSchema(!showSchema)}
             >
               Schema
             </button>
@@ -296,6 +386,7 @@ const QueryView = forwardRef<QueryViewHandle>(function QueryView(_, ref) {
 
         {/* GraphQL editor */}
         <div className={styles.queryArea}>
+          <span className={styles.runShortcut}>⌘ ↵  to run</span>
           <GraphQLEditor
             ref={editorRef}
             value={activeTab.query}
@@ -310,15 +401,15 @@ const QueryView = forwardRef<QueryViewHandle>(function QueryView(_, ref) {
         <ResizeHandle
           direction="vertical"
           onResize={delta => {
-            if (!varsOpen && delta < -4) setVarsOpen(true)
-            if (varsOpen) onResizeVars(delta)
+            if (!varsOpenRef.current && delta < -4) setVarsOpen(true)
+            if (varsOpenRef.current) onResizeVars(delta)
           }}
         />
         <div className={styles.varsPanel} style={{ height: varsOpen ? varsHeight : 36 }}>
           <div className={styles.varsTabs}>
             <button
               className={`${styles.varsTab} ${varsOpen ? styles.varsTabActive : ''}`}
-              onClick={() => setVarsOpen(v => !v)}
+              onClick={() => setVarsOpen(!varsOpen)}
             >
               Variables
               {activeTab.variables.trim() && <span className={styles.varsDot} />}
@@ -381,7 +472,16 @@ const QueryView = forwardRef<QueryViewHandle>(function QueryView(_, ref) {
 
           <div className={styles.resultArea}>
             {result ? (
-              <JsonViewer value={resultText} isError={hasError} />
+              <JsonViewer
+                value={resultText}
+                isError={hasError}
+                docMap={onOpenInCollections ? (() => {
+                  const m = new Map<string, string>()
+                  extractResultDocs(result, knownCollections).forEach(({ collection, docID }) => m.set(docID, collection))
+                  return m
+                })() : undefined}
+                onOpenDoc={onOpenInCollections}
+              />
             ) : (
               <div className={styles.placeholder}>
                 <svg width={32} height={32} viewBox="0 0 32 32" fill="none" opacity={0.3}>

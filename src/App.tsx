@@ -13,21 +13,19 @@ import SchemaView from './views/SchemaView'
 import type { SchemaViewHandle } from './views/SchemaView'
 import PeersView from './views/PeersView'
 import CommitsView from './views/CommitsView'
+import { useUIStore } from './store/uiStore'
 import styles from './App.module.css'
 
-const LAST_COLLECTION_KEY = 'defradb:lastCollection'
-
 export default function App() {
-  const [activeCollection, setActiveCollection] = useState<string | null>(() =>
-    localStorage.getItem(LAST_COLLECTION_KEY)
-  )
-  const [activeTab, setActiveTab] = useState<Tab>(() =>
-    localStorage.getItem(LAST_COLLECTION_KEY) ? 'collections' : 'dashboard'
-  )
+  const { activeTab, setActiveTab, activeCollection, setActiveCollection } = useUIStore()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [mountedTabs, setMountedTabs]   = useState<Set<Tab>>(() =>
-    new Set<Tab>(localStorage.getItem(LAST_COLLECTION_KEY) ? ['dashboard', 'collections'] : ['dashboard'])
-  )
+  const [mountedTabs, setMountedTabs]   = useState<Set<Tab>>(() => {
+    const initial = new Set<Tab>(['dashboard'])
+    if (activeCollection) initial.add('collections')
+    initial.add(activeTab)
+    return initial
+  })
+  const [commitsJump, setCommitsJump] = useState<{ docID: string; seq: number } | null>(null)
   const collectionsRef = useRef<CollectionsViewHandle>(null)
   const schemaRef      = useRef<SchemaViewHandle>(null)
   const queryRef       = useRef<QueryViewHandle>(null)
@@ -38,13 +36,11 @@ export default function App() {
   }
 
   function selectCollection(name: string) {
-    localStorage.setItem(LAST_COLLECTION_KEY, name)
     setActiveCollection(name)
     selectTab('collections')
   }
 
   function clearCollection() {
-    localStorage.removeItem(LAST_COLLECTION_KEY)
     setActiveCollection(null)
   }
 
@@ -66,6 +62,7 @@ export default function App() {
             onExport={() => collectionsRef.current?.exportDocs()}
             onNewType={() => schemaRef.current?.openCreate()}
             onPatchType={() => schemaRef.current?.openPatch()}
+            onNewView={() => { schemaRef.current?.openCreateView(); selectTab('schema') }}
           />
           <div className={styles.content}>
             {mountedTabs.has('dashboard') && (
@@ -79,11 +76,19 @@ export default function App() {
                   onViewSchema={name => { schemaRef.current?.selectType(name); selectTab('schema') }}
                   onCollectionInvalid={clearCollection}
                   onOpenInQueryRunner={query => { queryRef.current?.openQuery(query); selectTab('query') }}
+                  onViewCommitGraph={docID => {
+                    setCommitsJump(prev => ({ docID, seq: (prev?.seq ?? 0) + 1 }))
+                    selectTab('commits')
+                  }}
                 />
               </div>
             )}
             {mountedTabs.has('query') && (
-              <div className={styles.tabPane} hidden={activeTab !== 'query'}><QueryView ref={queryRef} /></div>
+              <div className={styles.tabPane} hidden={activeTab !== 'query'}><QueryView ref={queryRef} onOpenInCollections={(collection, docID) => {
+                setActiveCollection(collection)
+                selectTab('collections')
+                setTimeout(() => collectionsRef.current?.openDoc(docID), 0)
+              }} /></div>
             )}
             {mountedTabs.has('schema') && (
               <div className={styles.tabPane} hidden={activeTab !== 'schema'}><SchemaView ref={schemaRef} /></div>
@@ -92,7 +97,15 @@ export default function App() {
               <div className={styles.tabPane} hidden={activeTab !== 'peers'}><PeersView /></div>
             )}
             {mountedTabs.has('commits') && (
-              <div className={styles.tabPane} hidden={activeTab !== 'commits'}><CommitsView /></div>
+              <div className={styles.tabPane} hidden={activeTab !== 'commits'}><CommitsView
+                jump={commitsJump}
+                onOpenInQueryRunner={query => { queryRef.current?.openQuery(query); selectTab('query') }}
+                onOpenInCollections={(collection, docID) => {
+                  setActiveCollection(collection)
+                  selectTab('collections')
+                  setTimeout(() => collectionsRef.current?.openDoc(docID), 0)
+                }}
+              /></div>
             )}
           </div>
         </main>

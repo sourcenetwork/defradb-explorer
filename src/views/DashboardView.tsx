@@ -1,27 +1,18 @@
-import { useCollections } from '../hooks/useCollections'
 import { usePeers } from '../hooks/usePeers'
 import { useReplicators } from '../hooks/useReplicators'
-import { useAllDocumentCounts } from '../hooks/useDocuments'
 import { useConfig } from '../context/ConfigContext'
+import { useCollections } from '../hooks/useCollections'
 import styles from './DashboardView.module.css'
 
 export default function DashboardView() {
-  const { config }                                  = useConfig()
-  const { data: collections, isLoading: collLoad }  = useCollections()
-  const { data: peers }                             = usePeers()
-  const { data: replicators }                       = useReplicators()
+  const { config }         = useConfig()
+  const { data: collections, isLoading: collLoad } = useCollections()
+  const { data: peers }    = usePeers()
+  const { data: replicators } = useReplicators()
 
-  const collectionNames = collections?.map(c => c.name) ?? []
-  const { data: counts, isLoading: countsLoading } = useAllDocumentCounts(collectionNames)
-
-  const peerCount = peers?.length ?? 0
-  const repCount  = replicators?.length ?? 0
-  const collCount = collections?.length ?? 0
-
-  const sortedCollections = [...(collections ?? [])].sort((a, b) =>
-    (counts?.[b.name] ?? 0) - (counts?.[a.name] ?? 0),
-  )
-  const totalDocs = Object.values(counts ?? {}).reduce((s, n) => s + n, 0)
+  const peerCount  = peers?.length ?? 0
+  const repCount   = replicators?.length ?? 0
+  const collCount  = collections?.length ?? 0
 
   return (
     <div className={styles.view}>
@@ -33,39 +24,6 @@ export default function DashboardView() {
         <StatCard label="Replicators"     value={String(repCount)}  accent={repCount  > 0 ? '#e0a96d' : undefined} />
         <StatCard label="Endpoint"        value={config.baseUrl} mono />
       </div>
-
-      {/* ── Collections summary ───────────────────────────────────────── */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>Collections</h2>
-          {!countsLoading && counts && collCount > 0 && (
-            <span className={styles.sectionMeta}>{totalDocs.toLocaleString()} total document{totalDocs !== 1 ? 's' : ''}</span>
-          )}
-        </div>
-        {collLoad ? (
-          <div className={styles.collSummary}>
-            {[...Array(4)].map((_, i) => <div key={i} className={styles.collRowSkeleton} />)}
-          </div>
-        ) : !collections?.length ? (
-          <p className={styles.empty}>No collections found.</p>
-        ) : (
-          <div className={styles.collSummary}>
-            {sortedCollections.map(c => {
-              const n = counts?.[c.name] ?? 0
-              return (
-                <div key={c.name} className={styles.collRow}>
-                  <span className={styles.collRowDot} />
-                  <span className={styles.collRowName}>{c.name}</span>
-                  <span className={styles.collRowCount}>
-                    {countsLoading ? '…' : n.toLocaleString()}
-                  </span>
-                  <span className={styles.collRowLabel}>{n === 1 ? 'document' : 'documents'}</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
 
       {/* ── Network ───────────────────────────────────────────────────── */}
       <section className={styles.section}>

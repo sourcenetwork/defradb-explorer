@@ -567,8 +567,8 @@ function RootPage({ schema, onNavigate }: {
   const mutationType = schema.getMutationType()
   const typeMap      = schema.getTypeMap()
 
-  const queryCount = queryType ? Object.values(queryType.getFields()).filter(f => !f.name.startsWith('_')).length : 0
-  const mutCount   = mutationType ? Object.values(mutationType.getFields()).filter(f => !f.name.startsWith('_') && f.name !== '_').length : 0
+  const queryCount = queryType ? Object.values(queryType.getFields()).filter(f => f.name !== '_').length : 0
+  const mutCount   = mutationType ? Object.values(mutationType.getFields()).filter(f => f.name !== '_').length : 0
   const typeCount  = Object.values(typeMap).filter(t => isObjectType(t) && !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_')).length
 
   return (
@@ -601,23 +601,28 @@ function OpListPage({ schema, opKind, onNavigate }: {
 
   const rootType = opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
   const allFields = useMemo(
-    () => rootType ? Object.values(rootType.getFields()).filter(f => !f.name.startsWith('_') && f.name !== '_') : [],
+    () => rootType ? Object.values(rootType.getFields()).filter(f => f.name !== '_') : [],
     [rootType],
   )
-  const mainFields = allFields.filter(f => !f.name.endsWith('_aggregate') && (!q || f.name.toLowerCase().includes(q)))
-  const aggFields  = allFields.filter(f =>  f.name.endsWith('_aggregate')  && (!q || f.name.toLowerCase().includes(q)))
+  const isAggregate  = (f: GraphQLField<unknown, unknown>) => AGGREGATE_NAMES.has(f.name) || f.name.endsWith('_aggregate')
+  const isSystem     = (f: GraphQLField<unknown, unknown>) => f.name.startsWith('_') && !isAggregate(f)
+  const mainFields   = allFields.filter(f => !isAggregate(f) && !isSystem(f) && (!q || f.name.toLowerCase().includes(q)))
+  const aggFields    = allFields.filter(f =>  isAggregate(f) && (!q || f.name.toLowerCase().includes(q)))
+  const systemFields = allFields.filter(f =>  isSystem(f)    && (!q || f.name.toLowerCase().includes(q)))
 
   return (
     <>
       <SearchBox value={search} onChange={setSearch} />
-      {mainFields.map(f => (
-        <RootRow key={f.name} name={f.name} returnType={formatType(f.type as GraphQLOutputType)}
-          onNavigate={() => onNavigate({ kind: 'operation', opKind, field: f })} />
-      ))}
+      {mainFields.length > 0 && (
+        <CollectionsGroup fields={mainFields} onNavigate={f => onNavigate({ kind: 'operation', opKind, field: f })} />
+      )}
       {aggFields.length > 0 && (
         <AggregateGroup fields={aggFields} onNavigate={f => onNavigate({ kind: 'operation', opKind: 'query', field: f })} />
       )}
-      {mainFields.length === 0 && aggFields.length === 0 && search && (
+      {systemFields.length > 0 && (
+        <SystemGroup fields={systemFields} onNavigate={f => onNavigate({ kind: 'operation', opKind, field: f })} />
+      )}
+      {mainFields.length === 0 && aggFields.length === 0 && systemFields.length === 0 && search && (
         <p className={styles.noResults}>No results for "{search}"</p>
       )}
     </>
@@ -688,12 +693,44 @@ function RootRow({ name, returnType, badge, badgeActive, accent, onNavigate }: {
   )
 }
 
+function CollectionsGroup({ fields, onNavigate }: { fields: GraphQLField<unknown,unknown>[]; onNavigate: (f: GraphQLField<unknown,unknown>) => void }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <>
+      <button className={`${styles.rootRow} ${styles.rootRowDim}`} onClick={() => setOpen(v => !v)}>
+        <span className={styles.rootRowName} style={{ color: 'var(--gray-600)' }}>Collections</span>
+        <span className={styles.rootRowBadge}>{fields.length}</span>
+        <span className={styles.rootRowChevron} style={{ transform: open ? 'rotate(90deg)' : undefined }}><ChevronRightIcon /></span>
+      </button>
+      {open && fields.map(f => (
+        <RootRow key={f.name} name={f.name} returnType={formatType(f.type as GraphQLOutputType)} onNavigate={() => onNavigate(f)} />
+      ))}
+    </>
+  )
+}
+
 function AggregateGroup({ fields, onNavigate }: { fields: GraphQLField<unknown,unknown>[]; onNavigate: (f: GraphQLField<unknown,unknown>) => void }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   return (
     <>
       <button className={`${styles.rootRow} ${styles.rootRowDim}`} onClick={() => setOpen(v => !v)}>
         <span className={styles.rootRowName} style={{ color: 'var(--gray-600)' }}>Aggregates</span>
+        <span className={styles.rootRowBadge}>{fields.length}</span>
+        <span className={styles.rootRowChevron} style={{ transform: open ? 'rotate(90deg)' : undefined }}><ChevronRightIcon /></span>
+      </button>
+      {open && fields.map(f => (
+        <RootRow key={f.name} name={f.name} returnType={formatType(f.type as GraphQLOutputType)} onNavigate={() => onNavigate(f)} />
+      ))}
+    </>
+  )
+}
+
+function SystemGroup({ fields, onNavigate }: { fields: GraphQLField<unknown,unknown>[]; onNavigate: (f: GraphQLField<unknown,unknown>) => void }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <>
+      <button className={`${styles.rootRow} ${styles.rootRowDim}`} onClick={() => setOpen(v => !v)}>
+        <span className={styles.rootRowName} style={{ color: 'var(--gray-600)' }}>DefraDB</span>
         <span className={styles.rootRowBadge}>{fields.length}</span>
         <span className={styles.rootRowChevron} style={{ transform: open ? 'rotate(90deg)' : undefined }}><ChevronRightIcon /></span>
       </button>

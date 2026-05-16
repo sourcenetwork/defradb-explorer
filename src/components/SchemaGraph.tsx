@@ -1,5 +1,6 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useRef, useState } from 'react'
 import dagre from '@dagrejs/dagre'
+import { toPng } from 'html-to-image'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -139,6 +140,40 @@ const HIDDEN_TYPES = new Set([
   'ExplainableMutation', 'ExplainableQuery', 'Mutation', 'Query', 'Subscription',
 ])
 
+function ExportButton({ canvasRef }: { canvasRef: React.RefObject<HTMLDivElement | null> }) {
+  const [exporting, setExporting] = useState(false)
+  const { getNodes } = useReactFlow()
+
+  async function handleExport() {
+    const el = canvasRef.current
+    if (!el || exporting) return
+    setExporting(true)
+    try {
+      const nodeCount = getNodes().length
+      const url = await toPng(el, {
+        backgroundColor: '#0a0a0a',
+        pixelRatio: 2,
+        filter: node => !(node instanceof HTMLElement && node.classList.contains('react-flow__minimap')),
+        // Ensure we capture enough of the graph
+        width: el.offsetWidth,
+        height: Math.max(el.offsetHeight, nodeCount * 60),
+      })
+      const a = document.createElement('a')
+      a.download = 'schema-graph.png'
+      a.href = url
+      a.click()
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <button className={styles.exportBtn} onClick={handleExport} disabled={exporting}>
+      {exporting ? 'Exporting…' : '↓ Export PNG'}
+    </button>
+  )
+}
+
 function SchemaGraphInner({ types }: { types: IntrospectionType[] }) {
   const userTypes = useMemo(
     () => types.filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT'),
@@ -195,9 +230,9 @@ function SchemaGraphInner({ types }: { types: IntrospectionType[] }) {
   const [nodes, , onNodesChange] = useNodesState(initialNodes)
   const [edges, , onEdgesChange] = useEdgesState(initialEdges)
   const { fitView } = useReactFlow()
+  const canvasRef = useRef<HTMLDivElement>(null)
 
   const onInit = useCallback(() => {
-    // Two rAFs: first lets React flush, second lets ReactFlow measure node sizes
     requestAnimationFrame(() => requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 })))
   }, [fitView])
 
@@ -210,7 +245,7 @@ function SchemaGraphInner({ types }: { types: IntrospectionType[] }) {
   }
 
   return (
-    <div className={styles.canvas}>
+    <div className={styles.canvas} ref={canvasRef}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -236,6 +271,7 @@ function SchemaGraphInner({ types }: { types: IntrospectionType[] }) {
           className={styles.minimap}
         />
       </ReactFlow>
+      <ExportButton canvasRef={canvasRef} />
     </div>
   )
 }

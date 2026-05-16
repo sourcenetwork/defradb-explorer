@@ -1,7 +1,15 @@
-import { useState, useRef } from 'react'
-import { useRecentCommits, useDocumentCommits } from '../hooks/useCommits'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Copy, Check, ArrowLeft, X, ArrowUpDown, ExternalLink, Play } from 'lucide-react'
+import { useRecentCommitsPage, useDocumentCommits, useCommitByCID, RAW_PAGE_SIZE } from '../hooks/useCommits'
 import type { Commit } from '../hooks/useCommits'
+import { useCollections } from '../hooks/useCollections'
+import { useIntrospection } from '../hooks/useIntrospection'
+import { useDocumentById } from '../hooks/useDocuments'
+import { isScalarField } from '../api/graphql'
+import { useUIStore } from '../store/uiStore'
 import styles from './CommitsView.module.css'
+
+import CommitGraph from '../components/CommitGraph'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -10,7 +18,7 @@ function shortCID(cid: string) {
 }
 
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, onClick }: { text: string; onClick?: (e: React.MouseEvent) => void }) {
   const [copied, setCopied] = useState(false)
   function copy() {
     navigator.clipboard.writeText(text).then(() => {
@@ -19,20 +27,12 @@ function CopyButton({ text }: { text: string }) {
     })
   }
   return (
-    <button className={`${styles.copyBtn} ${copied ? styles.copyBtnDone : ''}`} onClick={copy} title={text}>
-      {copied ? '✓' : <CopyIcon />}
+    <button className={`${styles.copyBtn} ${copied ? styles.copyBtnDone : ''}`} onClick={e => { onClick?.(e); copy() }} title={text}>
+      {copied ? <Check size={11} /> : <Copy size={11} />}
     </button>
   )
 }
 
-function CopyIcon() {
-  return (
-    <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-      <rect x={4} y={4} width={7} height={7} rx={1.2} stroke="currentColor" strokeWidth={1.2}/>
-      <path d="M3 8H2a1 1 0 01-1-1V2a1 1 0 011-1h5a1 1 0 011 1v1" stroke="currentColor" strokeWidth={1.2}/>
-    </svg>
-  )
-}
 
 function FieldChip({ name }: { name: string | null }) {
   const isComposite = name === '_C' || name == null
@@ -62,78 +62,187 @@ function Skeleton() {
   )
 }
 
-// ── Document summary (one row per doc) ───────────────────────────────────────
+// ── Flat commit row ───────────────────────────────────────────────────────────
 
-interface DocSummary {
-  docID: string
-  maxHeight: number        // total number of writes
-  latestFields: string[]   // fields changed in the most recent write
-  latestCID: string | null // composite CID of the most recent write
+function CommitRow({ commit, onSelectDoc, collection }: {
+  commit: Commit
+  onSelectDoc: (id: string) => void
+  collection: string | null
+}) {
+  const changedFields = commit.links
+    .filter(l => l.fieldName && l.fieldName !== '_C')
+    .map(l => l.fieldName!)
+  return (
+    <div className={styles.recentRow} onClick={() => onSelectDoc(commit.docID)} role="button" tabIndex={0}
+      onKeyDown={e => e.key === 'Enter' && onSelectDoc(commit.docID)}>
+      <HeightBadge height={commit.height} />
+      <span className={styles.recentDocID} title={commit.docID}>{commit.docID}</span>
+      {collection
+        ? <span className={styles.collectionChip}>{collection}</span>
+        : <span />
+      }
+      <div className={styles.fieldList}>
+        {changedFields.map(f => <FieldChip key={f} name={f} />)}
+        {changedFields.length === 0 && <span className={styles.compositeLabel}>no field changes</span>}
+      </div>
+      <div className={styles.cidCell}>
+        <span className={styles.cid} title={commit.cid}>{shortCID(commit.cid)}</span>
+        <CopyButton text={commit.cid} onClick={e => e.stopPropagation()} />
+      </div>
+    </div>
+  )
 }
 
-function groupIntoDocSummaries(commits: Commit[]): DocSummary[] {
-  // Commits arrive ordered by height DESC globally. For each docID, the first
-  // composite commit we see is its latest version.
-  const map = new Map<string, DocSummary>()
-  for (const c of commits) {
-    let doc = map.get(c.docID)
-    if (!doc) {
-      doc = { docID: c.docID, maxHeight: c.height, latestFields: [], latestCID: null }
-      map.set(c.docID, doc)
-    }
-    // First _C commit for this doc = its latest composite; all non-_C links are the changed fields
-    if (c.fieldName === '_C' && doc.latestCID === null) {
-      doc.latestCID = c.cid
-      doc.latestFields = c.links
-        .filter(l => l.fieldName && l.fieldName !== '_C')
-        .map(l => l.fieldName!)
-    }
-  }
-  // Sort by most writes (highest version) descending
-  return [...map.values()].sort((a, b) => b.maxHeight - a.maxHeight || a.docID.localeCompare(b.docID))
+// Fetches one raw page and reports composites + hasMore to parent
+function CommitPage({ pageIndex, onData }: {
+  pageIndex: number
+  onData: (index: number, commits: Commit[], hasMore: boolean) => void
+}) {
+  const { data, isLoading, isError } = useRecentCommitsPage(pageIndex * RAW_PAGE_SIZE)
+  useEffect(() => {
+    if (data) onData(pageIndex, data.composites, data.hasMore)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
+  if (isLoading && pageIndex === 0) return <Skeleton />
+  if (isError   && pageIndex === 0) return <p className={styles.empty}>Failed to load commits.</p>
+  return null
 }
 
 function RecentFeed({ onSelectDoc }: { onSelectDoc: (id: string) => void }) {
-  const [limit, setLimit] = useState(200)
-  const { data, isLoading, isError } = useRecentCommits(limit)
+  const [pages, setPages]           = useState(1)
+  const [allCommits, setAllCommits] = useState<Commit[]>([])
+  const [hasMore, setHasMore]       = useState(false)
+  const [sortByHeight, setSortByHeight] = useState(false)
+  const pageDataRef = useRef<Map<number, Commit[]>>(new Map())
+  const { data: collections = [] } = useCollections()
+  const versionToCollection = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of collections) m.set(c.version_id, c.name)
+    return m
+  }, [collections])
 
-  if (isLoading) return <Skeleton />
-  if (isError)   return <p className={styles.empty}>Failed to load commits.</p>
-  if (!data?.length) return <p className={styles.empty}>No commits found.</p>
+  function handlePageData(pageIndex: number, commits: Commit[], more: boolean) {
+    pageDataRef.current.set(pageIndex, commits)
+    const accumulated: Commit[] = []
+    for (let i = 0; i < pages; i++) {
+      accumulated.push(...(pageDataRef.current.get(i) ?? []))
+    }
+    setAllCommits(accumulated)
+    if (pageIndex === pages - 1) setHasMore(more)
+  }
 
-  const docs = groupIntoDocSummaries(data)
+  const displayed = sortByHeight
+    ? [...allCommits].sort((a, b) => b.height - a.height)
+    : allCommits
+  const loading = allCommits.length === 0
 
   return (
     <div className={styles.feedWrap}>
-      <div className={styles.commitList}>
-        {docs.map(doc => (
-          <DocSummaryRow key={doc.docID} doc={doc} onSelectDoc={onSelectDoc} />
-        ))}
-      </div>
-      {data.length === limit && (
-        <button className={styles.loadMore} onClick={() => setLimit(l => l + 200)}>
-          Load more
-        </button>
+      {Array.from({ length: pages }, (_, i) => (
+        <CommitPage key={i} pageIndex={i} onData={handlePageData} />
+      ))}
+
+      {!loading && (
+        <>
+          <div className={styles.feedHeader}>
+            <span className={styles.feedCount}>{allCommits.length}{hasMore ? '+' : ''} commit{allCommits.length !== 1 ? 's' : ''}{hasMore ? ' loaded' : ''}</span>
+            <button
+              className={`${styles.sortBtn} ${sortByHeight ? styles.sortBtnActive : ''}`}
+              onClick={() => setSortByHeight(v => !v)}
+              title={sortByHeight ? 'Sorted by height — click to restore default order' : 'Sort by height'}
+            >
+              <ArrowUpDown size={11} />
+              {sortByHeight ? 'By height' : 'Default order'}
+            </button>
+          </div>
+          {allCommits.length === 0
+            ? <p className={styles.empty}>No commits found.</p>
+            : <div className={styles.commitList}>
+                {displayed.map(commit => (
+                  <CommitRow
+                    key={commit.cid}
+                    commit={commit}
+                    onSelectDoc={onSelectDoc}
+                    collection={commit.collectionVersionId ? versionToCollection.get(commit.collectionVersionId) ?? null : null}
+                  />
+                ))}
+              </div>
+          }
+          {hasMore && (
+            <button className={styles.loadMore} onClick={() => setPages(p => p + 1)}>
+              Load more
+            </button>
+          )}
+        </>
       )}
     </div>
   )
 }
 
-function DocSummaryRow({ doc, onSelectDoc }: { doc: DocSummary; onSelectDoc: (id: string) => void }) {
+// ── Document info card ────────────────────────────────────────────────────────
+
+const AGGREGATE_FIELDS = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY'])
+
+function DocInfoCard({ docID, onOpenInCollections, onOpenInQueryRunner, showFields = true }: {
+  docID: string
+  onOpenInCollections?: (collection: string, docID: string) => void
+  onOpenInQueryRunner?: (query: string) => void
+  showFields?: boolean
+}) {
+  const { data: commits = [] }      = useDocumentCommits(docID)
+  const { data: collections = [] }  = useCollections()
+  const { data: schema }            = useIntrospection()
+
+  const collectionVersionId = commits[0]?.collectionVersionId ?? null
+
+  const collectionName = useMemo(() => {
+    if (!collectionVersionId) return null
+    return collections.find(c => c.version_id === collectionVersionId)?.name ?? null
+  }, [collectionVersionId, collections])
+
+  const scalarFields = useMemo(() => {
+    if (!schema || !collectionName) return []
+    const type = schema.__schema.types.find(t => t.name === collectionName)
+    if (!type?.fields) return ['_docID']
+    return type.fields
+      .filter(f => isScalarField(f.type) && !AGGREGATE_FIELDS.has(f.name) && (f.name === '_docID' || !f.name.startsWith('_')))
+      .map(f => f.name)
+  }, [schema, collectionName])
+
+  const { data: doc } = useDocumentById(collectionName ?? '', docID, scalarFields)
+
+  if (!collectionName) return null
+
+  const displayFields = scalarFields.filter(f => f !== '_docID' && f !== '_deleted')
+
   return (
-    <div className={styles.recentRow}>
-      <HeightBadge height={doc.maxHeight} />
-      <button className={styles.recentDocID} title={doc.docID} onClick={() => onSelectDoc(doc.docID)}>
-        {doc.docID}
-      </button>
-      <div className={styles.fieldList}>
-        {doc.latestFields.map(f => <FieldChip key={f} name={f} />)}
-        {doc.latestFields.length === 0 && <span className={styles.compositeLabel}>no field changes</span>}
+    <div className={showFields ? styles.docInfoCard : styles.docInfoCardFlat}>
+      <div className={styles.docInfoHeader}>
+        <span className={styles.docInfoCollection}>{collectionName}</span>
+        <span className={styles.docInfoDocID} title={docID}>{docID}</span>
+        <div className={styles.docInfoActions}>
+          {onOpenInCollections && (
+            <button className={styles.docInfoBtn} onClick={() => onOpenInCollections(collectionName, docID)}>
+              <ExternalLink size={11} /> Collections
+            </button>
+          )}
+          {onOpenInQueryRunner && (
+            <button className={styles.docInfoBtn} onClick={() => onOpenInQueryRunner(`{\n  ${collectionName}(filter: { _docID: { _eq: ${JSON.stringify(docID)} } }) {\n    ${scalarFields.join('\n    ')}\n  }\n}`)}>
+              <Play size={11} /> Query Runner
+            </button>
+          )}
+        </div>
       </div>
-      {doc.latestCID && (
-        <div className={styles.cidCell}>
-          <span className={styles.cid} title={doc.latestCID}>{shortCID(doc.latestCID)}</span>
-          <CopyButton text={doc.latestCID} />
+      {showFields && doc && displayFields.length > 0 && (
+        <div className={styles.docInfoFields}>
+          {displayFields.map(f => (
+            <div key={f} className={styles.docInfoField}>
+              <span className={styles.docInfoFieldKey}>{f}</span>
+              <span className={styles.docInfoFieldVal}>
+                {doc[f] == null ? <span className={styles.docInfoNull}>null</span> : String(doc[f])}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -142,21 +251,13 @@ function DocSummaryRow({ doc, onSelectDoc }: { doc: DocSummary; onSelectDoc: (id
 
 // ── Document timeline ─────────────────────────────────────────────────────────
 
-const PAGE = 50
-
 function DocTimeline({ docID }: { docID: string }) {
-  const [limit, setLimit] = useState(PAGE)
-  const { data, isLoading, isError } = useDocumentCommits(docID, limit)
+  const { data, isLoading, isError } = useDocumentCommits(docID)
 
   if (isLoading) return <Skeleton />
   if (isError)   return <p className={styles.empty}>Failed to load commits for this document.</p>
   if (!data?.length) return <p className={styles.empty}>No commits found for this document.</p>
 
-  const hitLimit = data.length === limit
-
-  // Group by height (already ordered DESC).
-  // If we hit the fetch limit the last height group may be incomplete — drop it
-  // so we never show a partial version. It reappears when the user loads more.
   const byHeight = new Map<number, Commit[]>()
   for (const c of data) {
     const arr = byHeight.get(c.height) ?? []
@@ -164,20 +265,27 @@ function DocTimeline({ docID }: { docID: string }) {
     byHeight.set(c.height, arr)
   }
   const heights = [...byHeight.keys()].sort((a, b) => b - a)
-  const visibleHeights = hitLimit ? heights.slice(0, -1) : heights
+  const maxHeight = heights[0] ?? 0
 
   return (
     <div className={styles.timelineWrap}>
       <div className={styles.timeline}>
-        {visibleHeights.map(h => {
+        {heights.map(h => {
           const commits = byHeight.get(h)!
-          const composite    = commits.find(c => c.fieldName === '_C')
+          const composites   = commits.filter(c => c.fieldName === '_C')
+          const composite    = composites[0]
           const changedLinks = composite?.links.filter(l => l.fieldName && l.fieldName !== '_C') ?? []
           const parentLink   = composite?.links.find(l => l.fieldName === '_C' || l.fieldName === null)
+          const isHead  = h === maxHeight
+          const isRoot  = h === 1
+          const isMerge = (byHeight.get(h - 1)?.filter(c => c.fieldName === '_C').length ?? 0) > 1
           return (
             <div key={h} className={styles.versionGroup}>
               <div className={styles.versionHeader}>
-                <span className={styles.versionLabel}>Version {h}</span>
+                <span className={styles.versionLabel}>v{h}</span>
+                {isHead  && <span className={styles.tagHead}>head</span>}
+                {isMerge && <span className={styles.tagMerge}>merge</span>}
+                {isRoot  && <span className={styles.tagRoot}>root</span>}
                 {composite && (
                   <div className={styles.versionCID}>
                     <span className={styles.cid} title={composite.cid}>{shortCID(composite.cid)}</span>
@@ -206,88 +314,155 @@ function DocTimeline({ docID }: { docID: string }) {
           )
         })}
       </div>
-      {hitLimit && (
-        <button className={styles.loadMore} onClick={() => setLimit(l => l + PAGE)}>
-          Load more versions
-        </button>
-      )}
     </div>
   )
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
-export default function CommitsView() {
-  const [input, setInput] = useState('')
-  const [docID, setDocID] = useState<string | null>(null)
+interface Jump { docID: string; seq: number }
+
+function isCIDInput(s: string) {
+  return s.startsWith('bafy') || s.startsWith('bafk') || s.startsWith('bafz')
+}
+
+export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollections }: {
+  jump?: Jump | null
+  onOpenInQueryRunner?: (query: string) => void
+  onOpenInCollections?: (collection: string, docID: string) => void
+}) {
+  const { commitsDocID, setCommitsDocID, commitsViewMode, setCommitsViewMode } = useUIStore()
+  const [input, setInput] = useState(commitsDocID ?? '')
+  const [pendingCID, setPendingCID] = useState<string | null>(null)
+  const docID = commitsDocID
+  const viewMode = commitsViewMode
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const { data: resolvedCommit, isLoading: cidLoading, isError: cidError } = useCommitByCID(pendingCID)
+
+  useEffect(() => {
+    if (resolvedCommit) {
+      setInput(resolvedCommit.docID)
+      setCommitsDocID(resolvedCommit.docID)
+      setCommitsViewMode('list')
+      setPendingCID(null)
+    }
+  }, [resolvedCommit]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function setDocID(id: string | null) { setCommitsDocID(id) }
+  function setViewMode(m: 'list' | 'graph') { setCommitsViewMode(m) }
+
+  // React to external navigation (from "View in commit graph" button)
+  useEffect(() => {
+    if (jump?.docID) {
+      setInput(jump.docID)
+      setCommitsDocID(jump.docID)
+      setCommitsViewMode('graph')
+    }
+  }, [jump?.seq]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function selectDoc(id: string) {
     setInput(id)
     setDocID(id)
+    setViewMode('graph')
   }
 
   function submit() {
-    const val = input.trim()
-    setDocID(val || null)
+    const v = input.trim()
+    if (!v) { setDocID(null); setPendingCID(null); return }
+    if (isCIDInput(v)) {
+      setPendingCID(v)
+      setDocID(null)
+    } else {
+      setDocID(v)
+      setPendingCID(null)
+    }
   }
 
   function clear() {
     setInput('')
     setDocID(null)
+    setPendingCID(null)
     inputRef.current?.focus()
   }
 
   const isFiltered = docID != null
+  const showGraph  = isFiltered && viewMode === 'graph'
 
   return (
     <div className={styles.view}>
 
       {/* ── Search bar ────────────────────────────────────────── */}
       <div className={styles.searchBar}>
+        {isFiltered && (
+          <button className={styles.backBtn} onClick={clear}>
+            <ArrowLeft size={12} /> All commits
+          </button>
+        )}
         <div className={styles.searchGroup}>
-          <span className={styles.searchLabel}>Document ID</span>
+          <span className={styles.searchLabel}>Doc ID or CID</span>
           <div className={styles.searchInputWrap}>
             <input
               ref={inputRef}
               className={styles.searchInput}
-              placeholder="bae-…"
+              placeholder="bae-… or bafy…"
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') submit() }}
               spellCheck={false}
             />
             {input && (
-              <button className={styles.clearBtn} onClick={clear}>×</button>
+              <button className={styles.clearBtn} onClick={clear}><X size={12} /></button>
             )}
           </div>
           <button className={styles.searchBtn} onClick={submit}>Search</button>
         </div>
+        {isFiltered && (
+          <div className={styles.searchRight}>
+            <div className={styles.viewToggleGroup}>
+              <button
+                className={`${styles.viewToggleBtn} ${viewMode === 'list' ? styles.viewToggleBtnActive : ''}`}
+                onClick={() => setViewMode('list')}
+              >List</button>
+              <button
+                className={`${styles.viewToggleBtn} ${viewMode === 'graph' ? styles.viewToggleBtnActive : ''}`}
+                onClick={() => setViewMode('graph')}
+              >Graph</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Content ───────────────────────────────────────────── */}
-      <div className={styles.body}>
-        {isFiltered ? (
+      <div className={`${styles.body} ${showGraph ? styles.bodyGraph : ''}`}>
+        {pendingCID ? (
           <div className={styles.section}>
-            <div className={styles.sectionHead}>
-              <button className={styles.backBtn} onClick={clear}>
-                <svg width={12} height={12} viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 2L3.5 6l4 4" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                All documents
-              </button>
-              <span className={styles.sectionHeadSep}>›</span>
-              <h2 className={styles.sectionTitle}>Commit history</h2>
-              <span className={styles.sectionDocID} title={docID}>{docID}</span>
-              <CopyButton text={docID} />
-            </div>
-            <DocTimeline docID={docID} />
+            {cidLoading && <p className={styles.empty}>Resolving commit…</p>}
+            {cidError && <p className={styles.empty}>Commit not found for CID: {pendingCID}</p>}
           </div>
+        ) : showGraph ? (
+          <>
+            <div className={styles.metaStrip}>
+              <DocInfoCard docID={docID} onOpenInCollections={onOpenInCollections} onOpenInQueryRunner={onOpenInQueryRunner} showFields={false} />
+            </div>
+            <CommitGraph docID={docID} onOpenInQueryRunner={onOpenInQueryRunner} onOpenInCollections={onOpenInCollections} />
+          </>
+        ) : isFiltered ? (
+          viewMode === 'graph' ? null : (
+            <>
+              <div className={styles.metaStrip}>
+                <DocInfoCard docID={docID} onOpenInCollections={onOpenInCollections} onOpenInQueryRunner={onOpenInQueryRunner} showFields={false} />
+              </div>
+              <div className={styles.section}>
+                <DocTimeline docID={docID} />
+              </div>
+            </>
+          )
         ) : (
           <div className={styles.section}>
             <div className={styles.sectionHead}>
-              <h2 className={styles.sectionTitle}>All documents</h2>
-              <span className={styles.sectionHint}>sorted by write count — click a document to see its full history</span>
+              <h2 className={styles.sectionTitle}>All commits</h2>
+              <span className={styles.sectionHint}>click a commit to see the full document history</span>
             </div>
             <RecentFeed onSelectDoc={selectDoc} />
           </div>

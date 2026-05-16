@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import type { Tab } from '../types'
+import { LayoutGrid, Table, Code2, FileText, GitCommit, Network, ChevronsLeft, ChevronsRight, GitBranch } from 'lucide-react'
 import { useCollections } from '../hooks/useCollections'
+import { useViews } from '../hooks/useViews'
 import { usePeers } from '../hooks/usePeers'
 import styles from './Sidebar.module.css'
 
@@ -12,23 +15,53 @@ interface Props {
 
 export default function Sidebar({ activeCollection, onSelectCollection, activeTab, onSelectTab }: Props) {
   const { data: collections, isLoading, isError } = useCollections()
+  const { data: views } = useViews()
   const { data: peers } = usePeers()
   const peerCount = peers?.length ?? 0
+  const [collapsed, setCollapsed] = useState(false)
+
+  if (collapsed) {
+    return (
+      <aside className={`${styles.sidebar} ${styles.sidebarCollapsed}`}>
+        <div className={styles.collapseRow}>
+          <button className={styles.collapseBtn} onClick={() => setCollapsed(false)} title="Expand sidebar">
+            <ChevronsRight size={13} />
+          </button>
+        </div>
+        <div className={styles.collapsedIcons}>
+          <IconBtn icon={<LayoutGrid size={15} />} active={activeTab === 'dashboard'} onClick={() => onSelectTab('dashboard')} title="Dashboard" />
+          <IconBtn icon={<Table size={15} />}      active={activeTab === 'collections'} onClick={() => onSelectTab('collections')} title="Collections" />
+          <IconBtn icon={<Code2 size={15} />}      active={activeTab === 'query'}    onClick={() => onSelectTab('query')} title="Query Runner" />
+          <IconBtn icon={<FileText size={15} />}   active={activeTab === 'schema'}   onClick={() => onSelectTab('schema')} title="Schema" />
+          <IconBtn icon={<GitCommit size={15} />}  active={activeTab === 'commits'}  onClick={() => onSelectTab('commits')} title="Commits" />
+          <IconBtn icon={<Network size={15} />}    active={activeTab === 'peers'}    onClick={() => onSelectTab('peers')} title="Peers" />
+        </div>
+        <div className={styles.collapsedFooter}>
+          <span className={`${styles.peerDotSmall} ${peerCount > 0 ? styles.peerOnline : styles.peerOffline}`} />
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside className={styles.sidebar}>
+      <div className={styles.collapseRow}>
+        <button className={styles.collapseBtn} onClick={() => setCollapsed(true)} title="Collapse sidebar">
+          <ChevronsLeft size={13} />
+        </button>
+      </div>
       <div className={styles.section}>
         <p className={styles.label}>Overview</p>
-        <NavItem icon={<GridIcon />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => onSelectTab('dashboard')} />
-        <NavItem icon={<RowsIcon />} label="Collections"  badge={collections ? String(collections.length) : undefined} active={activeTab === 'collections'} onClick={() => onSelectTab('collections')} />
-        <NavItem icon={<CodeIcon />} label="Query Runner" active={activeTab === 'query'}       onClick={() => onSelectTab('query')} />
-        <NavItem icon={<DocIcon />}    label="Schema"   active={activeTab === 'schema'}  onClick={() => onSelectTab('schema')} />
-        <NavItem icon={<CommitsIcon />} label="Commits" active={activeTab === 'commits'} onClick={() => onSelectTab('commits')} />
+        <NavItem icon={<LayoutGrid size={14} />} label="Dashboard"    active={activeTab === 'dashboard'} onClick={() => onSelectTab('dashboard')} />
+        <NavItem icon={<Table size={14} />}      label="Collections"  badge={collections ? String(collections.length) : undefined} active={activeTab === 'collections'} onClick={() => onSelectTab('collections')} />
+        <NavItem icon={<Code2 size={14} />}      label="Query Runner" active={activeTab === 'query'}    onClick={() => onSelectTab('query')} />
+        <NavItem icon={<FileText size={14} />}   label="Schema"       active={activeTab === 'schema'}   onClick={() => onSelectTab('schema')} />
+        <NavItem icon={<GitCommit size={14} />}  label="Commits"      active={activeTab === 'commits'}  onClick={() => onSelectTab('commits')} />
       </div>
 
       <div className={styles.section}>
         <p className={styles.label}>Network</p>
-        <NavItem icon={<PeersIcon />} label="Peers" badge={peerCount > 0 ? String(peerCount) : undefined} active={activeTab === 'peers'} onClick={() => onSelectTab('peers')} />
+        <NavItem icon={<Network size={14} />} label="Peers" badge={peerCount > 0 ? String(peerCount) : undefined} active={activeTab === 'peers'} onClick={() => onSelectTab('peers')} />
       </div>
 
       <div className={styles.collectionSection}>
@@ -48,12 +81,31 @@ export default function Sidebar({ activeCollection, onSelectCollection, activeTa
           <button
             key={c.name}
             className={`${styles.collectionItem} ${c.name === activeCollection ? styles.collectionActive : ''}`}
-            onClick={() => onSelectCollection(c.name)}
+            onClick={() => { onSelectCollection(c.name); onSelectTab('collections') }}
           >
             <span className={styles.collectionDot} style={{ opacity: c.name === activeCollection ? 1 : 0.4 }} />
             {c.name}
+            {c.is_branchable && (
+              <GitBranch size={10} className={styles.branchIcon} aria-label="Branchable" />
+            )}
           </button>
         ))}
+
+        {views && views.length > 0 && (
+          <>
+            <p className={styles.label} style={{ padding: '12px 8px 4px' }}>Views</p>
+            {views.map(v => (
+              <button
+                key={v.name}
+                className={`${styles.collectionItem} ${styles.viewItem} ${v.name === activeCollection ? styles.collectionActive : ''}`}
+                onClick={() => { onSelectCollection(v.name); onSelectTab('collections') }}
+              >
+                <span className={styles.collectionDot} style={{ opacity: v.name === activeCollection ? 1 : 0.4, background: 'var(--gray-500)' }} />
+                {v.name}
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       <div className={styles.footer}>
@@ -85,9 +137,16 @@ function NavItem({ icon, label, badge, active, onClick }: {
   )
 }
 
-function GridIcon()  { return <svg width={14} height={14} viewBox="0 0 16 16" fill="none"><rect x={1} y={1} width={6} height={6} rx={1.5} stroke="currentColor" strokeWidth={1.3}/><rect x={9} y={1} width={6} height={6} rx={1.5} stroke="currentColor" strokeWidth={1.3}/><rect x={1} y={9} width={6} height={6} rx={1.5} stroke="currentColor" strokeWidth={1.3}/><rect x={9} y={9} width={6} height={6} rx={1.5} stroke="currentColor" strokeWidth={1.3}/></svg> }
-function RowsIcon()  { return <svg width={14} height={14} viewBox="0 0 16 16" fill="none"><rect x={1} y={3} width={14} height={2.5} rx={1} stroke="currentColor" strokeWidth={1.2}/><rect x={1} y={7} width={14} height={2.5} rx={1} stroke="currentColor" strokeWidth={1.2}/><rect x={1} y={11} width={14} height={2.5} rx={1} stroke="currentColor" strokeWidth={1.2}/></svg> }
-function CodeIcon()  { return <svg width={14} height={14} viewBox="0 0 16 16" fill="none"><polyline points="3,5 1,8 3,11" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/><polyline points="13,5 15,8 13,11" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/><line x1={9} y1={2} x2={7} y2={14} stroke="currentColor" strokeWidth={1.3} strokeLinecap="round"/></svg> }
-function DocIcon()   { return <svg width={14} height={14} viewBox="0 0 16 16" fill="none"><rect x={1} y={1} width={14} height={14} rx={2} stroke="currentColor" strokeWidth={1.3}/><line x1={5} y1={5} x2={11} y2={5} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/><line x1={5} y1={8} x2={9} y2={8} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/><line x1={5} y1={11} x2={10} y2={11} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/></svg> }
-function PeersIcon() { return <svg width={14} height={14} viewBox="0 0 16 16" fill="none"><circle cx={8} cy={8} r={2} stroke="currentColor" strokeWidth={1.3}/><circle cx={2.5} cy={4} r={1.5} stroke="currentColor" strokeWidth={1.2}/><circle cx={13.5} cy={4} r={1.5} stroke="currentColor" strokeWidth={1.2}/><circle cx={2.5} cy={12} r={1.5} stroke="currentColor" strokeWidth={1.2}/><circle cx={13.5} cy={12} r={1.5} stroke="currentColor" strokeWidth={1.2}/><line x1={3.5} y1={5} x2={6.5} y2={7} stroke="currentColor" strokeWidth={1.1}/><line x1={12.5} y1={5} x2={9.5} y2={7} stroke="currentColor" strokeWidth={1.1}/><line x1={3.5} y1={11} x2={6.5} y2={9} stroke="currentColor" strokeWidth={1.1}/><line x1={12.5} y1={11} x2={9.5} y2={9} stroke="currentColor" strokeWidth={1.1}/></svg> }
-function CommitsIcon() { return <svg width={14} height={14} viewBox="0 0 16 16" fill="none"><circle cx={8} cy={8} r={2.2} stroke="currentColor" strokeWidth={1.3}/><line x1={8} y1={1} x2={8} y2={5.5} stroke="currentColor" strokeWidth={1.3} strokeLinecap="round"/><line x1={8} y1={10.5} x2={8} y2={15} stroke="currentColor" strokeWidth={1.3} strokeLinecap="round"/></svg> }
+function IconBtn({ icon, active, onClick, title }: {
+  icon: React.ReactNode; active: boolean; onClick: () => void; title: string
+}) {
+  return (
+    <button
+      className={`${styles.iconBtn} ${active ? styles.iconBtnActive : ''}`}
+      onClick={onClick}
+      title={title}
+    >
+      {icon}
+    </button>
+  )
+}

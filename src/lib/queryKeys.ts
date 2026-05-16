@@ -7,4 +7,6 @@ export const queryKeys = {
   documentCount:      (baseUrl: string, collection: string, search?: string) => ['documentCount', baseUrl, collection, search ?? ''] as const,
   allDocumentCounts:  (baseUrl: string, collections: string[]) => ['allDocumentCounts', baseUrl, ...collections] as const,
   peers:          (baseUrl: string) => ['peers', baseUrl] as const,
+  nodeInfo:       (baseUrl: string) => ['nodeInfo', baseUrl] as const,
+  p2pCollections: (baseUrl: string) => ['p2pCollections', baseUrl] as const,
 }

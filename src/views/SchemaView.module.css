@@ -281,9 +281,10 @@
 :global(.sdl-keyword)  { color: #c792ea; }
 :global(.sdl-typename) { color: var(--defradb); }
 :global(.sdl-typeref)  { color: var(--defradb); }
-:global(.sdl-scalar)   { color: #ffcb6b; }
+:global(.sdl-scalar)   { color: var(--defradb); }
 :global(.sdl-field)    { color: #a6e3a1; }
 :global(.sdl-comment)  { color: var(--gray-600); font-style: italic; }
+:global(.sdl-string)   { color: #39e265; }
 
 .sdlModeGroup {
   display: flex;

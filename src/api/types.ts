@@ -13,6 +13,7 @@ export interface CollectionDescription {
   id: string
   version_id: string
   fields: CollectionField[]
+  is_branchable: boolean
 }
 
 export interface IndexField {
@@ -30,6 +31,12 @@ export interface CollectionIndex {
 export interface PeerInfo {
   id: string
   addr: string
+}
+
+export interface ViewDescription {
+  name: string
+  query: string
+  sdl?: string
 }
 
 // ── GraphQL types ────────────────────────────────────────────────────────────

@@ -1,11 +1,26 @@
 .empty, .emptyTable {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   color: var(--muted);
   font-size: 13px;
 }
+
+.emptyTableCta {
+  background: none;
+  border: none;
+  color: var(--defradb);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.8;
+  transition: opacity 0.1s;
+}
+.emptyTableCta:hover { opacity: 1; }
 
 .errorBanner {
   display: flex;
@@ -80,9 +95,29 @@
 
 .statsMain {
   display: flex;
-  align-items: baseline;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
+}
+
+.statsTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.branchBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--defradb);
+  background: rgba(16, 203, 255, 0.08);
+  border: 1px solid rgba(16, 203, 255, 0.2);
+  border-radius: 4px;
+  padding: 2px 7px;
+  white-space: nowrap;
 }
 
 .statsCollection {
@@ -379,6 +414,23 @@
   cursor: pointer;
 }
 .queryPreviewCopy:hover { color: var(--white); border-color: var(--gray-500); }
+
+.queryPreviewOpenBtn {
+  background: rgba(16, 203, 255, 0.08);
+  border: 1px solid rgba(16, 203, 255, 0.4);
+  border-radius: 4px;
+  color: var(--defradb);
+  font-size: 10px;
+  font-family: 'CommitMono', monospace;
+  padding: 2px 9px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.1s, border-color 0.1s;
+}
+.queryPreviewOpenBtn:hover {
+  background: rgba(16, 203, 255, 0.14);
+  border-color: rgba(16, 203, 255, 0.65);
+}
 
 /* ── Indexes bar ─────────────────────────────────────────────────────────────*/
 
@@ -752,6 +804,20 @@
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
 }
 
+.detailResizeHandle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 10;
+}
+.detailResizeHandle:hover,
+.detailResizeHandle:active {
+  background: rgba(16, 203, 255, 0.15);
+}
+
 .detailHeader {
   display: flex;
   align-items: center;
@@ -875,6 +941,13 @@
   padding: 12px;
 }
 
+.detailBodyGraph {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .detailSectionLabel {
   font-size: 12px;
   font-weight: 600;
@@ -918,6 +991,41 @@
   font-family: 'CommitMono', monospace;
   font-size: 12px;
   color: var(--defradb);
+}
+
+.fieldValMuted {
+  color: var(--gray-600);
+  font-size: 11px;
+}
+
+.fieldValRef {
+  font-family: 'CommitMono', monospace;
+  font-size: 11px;
+  color: var(--defradb);
+}
+
+.fieldValExpand {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: 'CommitMono', monospace;
+  font-size: 11px;
+  color: var(--gray-600);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fieldValExpand:hover { color: var(--white); }
+
+.fieldValPre {
+  font-family: 'CommitMono', monospace;
+  font-size: 11px;
+  color: var(--gray-400);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 4px 0;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .divider {
@@ -1087,15 +1195,64 @@
   background: none;
   border: none;
   color: var(--gray-600);
-  font-size: 14px;
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
+  display: flex;
+  align-items: center;
   transition: color 0.1s;
 }
 
 .histRefreshBtn:hover    { color: var(--white); }
 .histRefreshBtn:disabled { opacity: 0.4; cursor: default; }
+
+.viewGraphBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--dark-border-2);
+  border-radius: 4px;
+  color: var(--gray-500);
+  font-size: 10px;
+  font-family: 'CommitMono', monospace;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+.viewGraphBtn:hover { color: var(--defradb); border-color: rgba(16,203,255,0.35); }
+
+.viewGraphBtnPrimary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16,203,255,0.1);
+  border: 1px solid rgba(16,203,255,0.35);
+  border-radius: 5px;
+  color: var(--defradb);
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.viewGraphBtnPrimary:hover { background: rgba(16,203,255,0.18); border-color: rgba(16,203,255,0.6); }
+
+.editToggleBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--gray-600);
+  font-size: 10px;
+  font-family: 'CommitMono', monospace;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 0.1s;
+}
+.editToggleBtn:hover { color: var(--white); }
 
 .histEmpty {
   font-size: 12px;
@@ -1131,6 +1288,39 @@
   color: var(--gray-400);
   flex-shrink: 0;
   min-width: 32px;
+}
+
+.tagHead {
+  font-size: 9px;
+  background: rgba(16, 203, 255, 0.12);
+  border: 1px solid rgba(16, 203, 255, 0.32);
+  border-radius: 3px;
+  color: #10CBFF;
+  padding: 1px 4px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.tagMerge {
+  font-size: 9px;
+  background: rgba(255, 203, 107, 0.1);
+  border: 1px solid rgba(255, 203, 107, 0.3);
+  border-radius: 3px;
+  color: #ffcb6b;
+  padding: 1px 4px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.tagRoot {
+  font-size: 9px;
+  background: rgba(160, 120, 255, 0.08);
+  border: 1px solid rgba(160, 120, 255, 0.2);
+  border-radius: 3px;
+  color: rgba(160, 120, 255, 0.7);
+  padding: 1px 4px;
+  line-height: 1.4;
+  flex-shrink: 0;
 }
 
 .histVersionLabel {
@@ -1199,10 +1389,11 @@
 }
 
 .histChevron {
-  font-size: 8px;
   color: var(--gray-600);
   flex-shrink: 0;
+  transition: transform 0.15s;
 }
+.histChevronOpen { transform: rotate(180deg); }
 
 .snapshotWrap {
   border-top: 1px solid var(--dark-border);

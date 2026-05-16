@@ -20,9 +20,9 @@ export async function createCollection(config: DefraConfig, sdl: string): Promis
   return all.filter(c => names.has(c.name))
 }
 
-// Converts SDL like `type User { newField: String }` into a DefraDB JSON Patch string.
+// Converts SDL like `type User { newField: String }` into a DefraDB JSON Patch array.
 // Each field becomes an "add" op at /<TypeName>/Fields/-.
-export function sdlToCollectionPatch(sdl: string): string {
+export function sdlToCollectionPatchOps(sdl: string): object[] {
   const typeMatch = sdl.match(/type\s+(\w+)\s*\{([^}]*)\}/s)
   if (!typeMatch) throw new Error('Could not parse SDL — expected `type TypeName { ... }`')
 
@@ -31,16 +31,27 @@ export function sdlToCollectionPatch(sdl: string): string {
 
   const ops: object[] = []
   for (const line of body.split('\n')) {
-    const fieldMatch = line.trim().match(/^(\w+)\s*:\s*([\w[\]!]+)/)
+    const trimmed = line.trim()
+    const fieldMatch = trimmed.match(/^(\w+)\s*:\s*([\w[\]!]+)(.*)$/)
     if (!fieldMatch) continue
-    const [, name, kind] = fieldMatch
-    // Strip NonNull/List wrappers to get scalar name for Kind
-    const scalarName = kind.replace(/[[\]!]/g, '')
-    ops.push({ op: 'add', path: `/${typeName}/Fields/-`, value: { Name: name, Kind: scalarName } })
+    const [, name, kindRaw, rest] = fieldMatch
+    const kind = kindRaw.replace(/[[\]!]/g, '') // strip NonNull/List wrappers
+
+    const value: Record<string, string> = { Name: name, Kind: kind }
+
+    // Parse @crdt(type: <value>)
+    const crdtMatch = rest.match(/@crdt\s*\(\s*type\s*:\s*(\w+)/)
+    if (crdtMatch) value.Typ = crdtMatch[1]
+
+    ops.push({ op: 'add', path: `/${typeName}/Fields/-`, value })
   }
 
   if (ops.length === 0) throw new Error('No fields found in SDL')
-  return JSON.stringify(ops)
+  return ops
+}
+
+export function sdlToCollectionPatch(sdl: string): string {
+  return JSON.stringify(sdlToCollectionPatchOps(sdl))
 }
 
 export async function addFieldToCollection(

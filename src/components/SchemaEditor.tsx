@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
@@ -8,25 +8,37 @@ import { closeBrackets } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt } from 'cm6-graphql'
 import { useConfig } from '../context/ConfigContext'
-import { createCollection, patchCollection } from '../api/graphql'
+import { useIntrospection } from '../hooks/useIntrospection'
+import { useCollections } from '../hooks/useCollections'
+import { createCollection, patchCollection, sdlToCollectionPatchOps } from '../api/graphql'
 import { queryKeys } from '../lib/queryKeys'
 import type { CollectionDescription } from '../api/types'
+import type { IntrospectionType } from '../api/types'
+import ResizeHandle from './ResizeHandle'
+import { useUIStore } from '../store/uiStore'
+import { highlightRefCode, highlightJson } from '../lib/sdl'
+import { makeSdlCompletion } from '../lib/sdlComplete'
+import { sdlFieldNameHighlighter } from '../lib/sdlFieldDecorator'
 import styles from './SchemaEditor.module.css'
 
 // ── Highlight + theme (reused from GraphQLEditor) ─────────────────────────────
 
 const highlight = HighlightStyle.define([
-  { tag: tags.keyword,      color: '#10CBFF' },
-  { tag: tags.typeName,     color: '#e0a96d' },
-  { tag: tags.propertyName, color: '#a8d8ff' },
-  { tag: tags.name,         color: '#cdd6f4' },
-  { tag: tags.string,       color: '#39e265' },
-  { tag: tags.number,       color: '#39e265' },
-  { tag: tags.bool,         color: '#10CBFF' },
-  { tag: tags.comment,      color: '#6c7086', fontStyle: 'italic' },
-  { tag: tags.punctuation,  color: '#6c7086' },
-  { tag: tags.bracket,      color: '#89b4fa' },
-  { tag: tags.operator,     color: '#10CBFF' },
+  { tag: tags.keyword,           color: '#c792ea' }, // sdl-keyword: type, interface, enum…
+  { tag: tags.definitionKeyword, color: '#c792ea' }, // query, mutation, subscription
+  { tag: tags.modifier,          color: '#c792ea' }, // @directives
+  { tag: tags.atom,              color: '#10CBFF' }, // Name nodes (type refs) — inherits keyword, override here
+  { tag: tags.typeName,          color: '#10CBFF' }, // sdl-typename / sdl-typeref
+  { tag: tags.propertyName,      color: '#a6e3a1' }, // sdl-field: field names
+  { tag: tags.attributeName,     color: '#a6e3a1' }, // argument names
+  { tag: tags.name,              color: '#cdd6f4' }, // fallback identifiers
+  { tag: tags.string,            color: '#39e265' }, // sdl-string
+  { tag: tags.number,            color: '#ffcb6b' }, // sdl-scalar-like
+  { tag: tags.bool,              color: '#ffcb6b' },
+  { tag: tags.comment,           color: '#6c7086', fontStyle: 'italic' },
+  { tag: tags.punctuation,       color: '#6c7086' },
+  { tag: tags.bracket,           color: '#6c7086' },
+  { tag: tags.operator,          color: '#6c7086' },
 ])
 
 const editorTheme = EditorView.theme({
@@ -68,9 +80,73 @@ const PATCH_TEMPLATE = `type User {
 }
 `
 
+// ── Reference helpers ─────────────────────────────────────────────────────────
+
+function ScalarChip({ name }: { name: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      className={`${styles.refChip} ${copied ? styles.refChipCopied : ''}`}
+      onClick={() => navigator.clipboard.writeText(name).then(() => {
+        setCopied(true); setTimeout(() => setCopied(false), 1000)
+      })}
+      title={`Copy "${name}"`}
+    >
+      {copied ? '✓' : name}
+    </button>
+  )
+}
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+  }, [text])
+  return (
+    <button className={styles.copyBtn} onClick={copy} title="Copy">
+      {copied ? '✓' : 'copy'}
+    </button>
+  )
+}
+
+function RefCode({ children }: { children: string }) {
+  return (
+    <div className={styles.refCodeWrap}>
+      <code
+        className={styles.refCode}
+        dangerouslySetInnerHTML={{ __html: highlightRefCode(children) }}
+      />
+      <CopyBtn text={children} />
+    </div>
+  )
+}
+
+function PatchCopyBtn({ json }: { json: string }) {
+  const [copied, setCopied] = useState(false)
+  function copy() {
+    navigator.clipboard.writeText(json).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+  }
+  return (
+    <button className={styles.copyBtn} onClick={copy}>{copied ? '✓' : 'copy'}</button>
+  )
+}
+
+// ── SDL type completion ───────────────────────────────────────────────────────
+
+const HIDDEN_INTROSPECTION = new Set([
+  'Boolean','Float','ID','Int','String','__Directive','__DirectiveLocation',
+  '__EnumValue','__Field','__InputValue','__Schema','__Type',
+  'ExplainableMutation','ExplainableQuery','Mutation','Query','Subscription',
+])
+
+
 // ── SDL editor (CodeMirror) ───────────────────────────────────────────────────
 
-function SDLEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function SDLEditor({ value, onChange, extra = [] }: {
+  value: string
+  onChange: (v: string) => void
+  extra?: import('@codemirror/state').Extension[]
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef      = useRef<EditorView | null>(null)
   const onChangeRef  = useRef(onChange)
@@ -87,12 +163,14 @@ function SDLEditor({ value, onChange }: { value: string; onChange: (v: string) =
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         graphqlExt(),
         syntaxHighlighting(highlight),
+        ...sdlFieldNameHighlighter(),
         closeBrackets(),
         editorTheme,
         EditorView.lineWrapping,
         EditorView.updateListener.of(u => {
           if (u.docChanged) onChangeRef.current(u.state.doc.toString())
         }),
+        ...extra,
       ],
     })
     const view = new EditorView({ state, parent: containerRef.current })
@@ -145,18 +223,58 @@ interface Props {
   initialMode?: 'create' | 'patch'
 }
 
+const MIN_GUIDE  = 280
+const MAX_GUIDE  = 600
+
 export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) {
   const { config }    = useConfig()
   const queryClient   = useQueryClient()
-  const [mode, setMode]       = useState<'create' | 'patch'>(initialMode)
-  const [sdl, setSdl]         = useState(initialMode === 'patch' ? PATCH_TEMPLATE : CREATE_TEMPLATE)
-  const [result, setResult]   = useState<CollectionDescription[] | null>(null)
+  const { schemaEditorMode: storeMode, schemaGuideWidth, setSchemaGuideWidth } = useUIStore()
+  const { data: introspection } = useIntrospection()
+  const { data: collections }   = useCollections()
 
-  function switchMode(next: 'create' | 'patch') {
-    setMode(next)
-    setSdl(next === 'create' ? CREATE_TEMPLATE : PATCH_TEMPLATE)
-    setResult(null)
-  }
+  // Honour initialMode on first mount; thereafter track store
+  const [mode, setMode] = useState<'create' | 'patch'>(initialMode)
+  const [sdl, setSdl]   = useState(initialMode === 'patch' ? PATCH_TEMPLATE : CREATE_TEMPLATE)
+  const [result, setResult] = useState<CollectionDescription[] | null>(null)
+
+  // Live patch preview — derived from sdl whenever in patch mode
+  const patchPreview = (() => {
+    if (mode !== 'patch') return null
+    try { return sdlToCollectionPatchOps(sdl) } catch { return null }
+  })()
+
+  const [previewHeight, setPreviewHeight] = useState(260)
+  const onResizePreview = useCallback((delta: number) => {
+    setPreviewHeight(prev => Math.max(80, Math.min(500, prev - delta)))
+  }, [])
+
+  // User-defined type names for SDL completion
+  const typeNamesRef = useRef<string[]>([])
+  useEffect(() => {
+    if (!introspection) return
+    typeNamesRef.current = introspection.__schema.types
+      .filter((t: IntrospectionType) => !HIDDEN_INTROSPECTION.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT')
+      .map((t: IntrospectionType) => t.name)
+  }, [introspection])
+
+  // Stable completion extension — reads typeNamesRef at completion time
+  const typeCompletion = useRef(makeSdlCompletion(() => typeNamesRef.current))
+
+  // Sync store → local when store changes externally (e.g. SchemaView opens patch)
+  useEffect(() => {
+    if (storeMode !== mode) {
+      setMode(storeMode)
+      setSdl(storeMode === 'patch' ? PATCH_TEMPLATE : CREATE_TEMPLATE)
+      setResult(null)
+    }
+  }, [storeMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+const schemaGuideWidthRef = useRef(schemaGuideWidth)
+  schemaGuideWidthRef.current = schemaGuideWidth
+  const onResizeGuide = useCallback((delta: number) => {
+    setSchemaGuideWidth(Math.max(MIN_GUIDE, Math.min(MAX_GUIDE, schemaGuideWidthRef.current - delta)))
+  }, [setSchemaGuideWidth])
 
   const { mutate, isPending, isError, error, reset } = useMutation({
     mutationFn: async () => {
@@ -175,22 +293,35 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
     <div className={styles.root}>
       {/* Toolbar */}
       <div className={styles.toolbar}>
-        <div className={styles.modeToggle}>
-          <button
-            className={`${styles.modeBtn} ${mode === 'create' ? styles.modeBtnActive : ''}`}
-            onClick={() => switchMode('create')}
-          >Create</button>
-          <button
-            className={`${styles.modeBtn} ${mode === 'patch' ? styles.modeBtnActive : ''}`}
-            onClick={() => switchMode('patch')}
-          >Patch</button>
-        </div>
+        {onDone && (
+          <>
+            <button className={styles.backBtn} onClick={onDone}>← Schema</button>
+            <span className={styles.backSep} />
+          </>
+        )}
+        <span className={styles.modeTitle}>
+          {mode === 'create' ? 'New collection' : 'Patch collection'}
+        </span>
         <span className={styles.toolbarHint}>
-          {mode === 'create' ? 'Define a new type with SDL' : 'Add fields to an existing type — use the exact collection name'}
+          {mode === 'create' ? 'Define a new collection with SDL' : 'Add fields to an existing collection'}
         </span>
         <div className={styles.toolbarActions}>
-          {onDone && (
-            <button className={styles.btnSecondary} onClick={onDone}>Cancel</button>
+          {mode === 'patch' && collections && collections.length > 0 && (
+            <select
+              className={styles.collectionPicker}
+              defaultValue=""
+              onChange={e => {
+                const name = e.target.value
+                if (!name) return
+                setSdl(`type ${name} {\n  newField: String\n}\n`)
+                setResult(null)
+              }}
+            >
+              <option value="" disabled>Pick collection…</option>
+              {collections.map(c => (
+                <option key={c.name} value={c.name}>{c.name}</option>
+              ))}
+            </select>
           )}
           <button
             className={styles.btnApply}
@@ -204,11 +335,31 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
 
       {/* Editor + sidebar */}
       <div className={styles.body}>
-        <div className={styles.editorWrap}>
-          <SDLEditor value={sdl} onChange={v => { setSdl(v); setResult(null) }} />
+        <div className={styles.editorColumn}>
+          <div className={styles.editorWrap}>
+            <SDLEditor value={sdl} onChange={v => { setSdl(v); setResult(null) }} extra={[typeCompletion.current]} />
+          </div>
+
+          {patchPreview !== null && (
+            <>
+              <ResizeHandle direction="vertical" onResize={onResizePreview} />
+              <div className={styles.patchPreviewPane} style={{ height: previewHeight }}>
+                <div className={styles.patchPreviewPaneHeader}>
+                  <span>JSON patch preview</span>
+                  <PatchCopyBtn json={JSON.stringify(patchPreview, null, 2)} />
+                </div>
+                <pre
+                  className={styles.patchPreviewPaneCode}
+                  dangerouslySetInnerHTML={{ __html: highlightJson(JSON.stringify(patchPreview, null, 2)) }}
+                />
+              </div>
+            </>
+          )}
         </div>
 
-        <div className={styles.sidebar}>
+        <ResizeHandle direction="horizontal" onResize={onResizeGuide} />
+
+        <div className={styles.sidebar} style={{ width: schemaGuideWidth }}>
           {/* Result */}
           {result && <ResultCard collections={result} mode={mode} />}
 
@@ -229,29 +380,180 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
 
           {/* SDL reference */}
           <div className={styles.refCard}>
-            <p className={styles.refTitle}>SDL reference</p>
-            <div className={styles.refSection}>
-              <p className={styles.refLabel}>Scalar types</p>
-              {['String', 'Int', 'Float', 'Float32', 'Float64', 'Boolean', 'DateTime', 'Blob', 'JSON', 'ID'].map(t => (
-                <span key={t} className={styles.refChip}>{t}</span>
+            <p className={styles.refTitle}>{mode === 'patch' ? 'Patch reference' : 'SDL reference'}</p>
+            <div className={styles.refQuickLinks}>
+              {(mode === 'patch' ? [
+                ['sdl-patch-add',    'add fields'],
+                ['sdl-field-types',  'field types'],
+                ['sdl-patch-frozen', "can't change"],
+              ] : [
+                ['sdl-field-types', 'field types'],
+                ['sdl-indexing',    'indexing'],
+                ['sdl-relations',   'relations'],
+                ['sdl-crdt',        '@crdt'],
+                ['sdl-collection',  'collection'],
+              ] as [string, string][]).map(([id, label]) => (
+                <button
+                  key={id}
+                  className={styles.refQuickLink}
+                  onClick={() => {
+                    const el = document.getElementById(id)
+                    if (!el) return
+                    el.closest('[class*="sidebar"]')?.scrollTo({ top: (el as HTMLElement).offsetTop - 12, behavior: 'smooth' })
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}
+                >{label}</button>
               ))}
             </div>
+
+            {mode === 'patch' && (
+              <>
+                {/* ── Adding fields ──────────────────────── */}
+                <p id="sdl-patch-add" className={styles.refGroupLabel}>Adding fields</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>How it works</p>
+                  <p className={styles.refSectionDesc}>Write the exact collection name, then list <em>only the new fields</em> you want to add. Existing fields are preserved — you do not need to repeat them. Each patch creates a new schema version.</p>
+                  <RefCode>{'type User {\n  score: Int @crdt(type: pncounter)\n  email: String @index(unique: true)\n  tags: [String]\n}'}</RefCode>
+                </div>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>Remove a field</p>
+                  <p className={styles.refSectionDesc}>To remove a field, omit it and include a <code>@remove</code> directive. Fields that have a dependent <code>@index</code> must have the index deleted first.</p>
+                  <RefCode>{'type User {\n  legacyField: String @remove\n}'}</RefCode>
+                </div>
+              </>
+            )}
+
+            {/* ── Field types ──────────────────────── */}
+            <p id="sdl-field-types" className={styles.refGroupLabel}>{mode === 'patch' ? 'Field types (for new fields)' : 'Field types'}</p>
+
             <div className={styles.refSection}>
-              <p className={styles.refLabel}>Required field</p>
-              <code className={styles.refCode}>name: String!</code>
+              <p className={styles.refSectionHead}>Scalars</p>
+              <p className={styles.refSectionDesc}>Click to copy. <code>DateTime</code> is ISO-8601; <code>Blob</code> is base64 binary; <code>JSON</code> stores arbitrary structured data without a schema.</p>
+              <div className={styles.refChips}>
+                {['String', 'Int', 'Float', 'Float32', 'Float64', 'Boolean', 'DateTime', 'Blob', 'JSON', 'ID'].map(t => (
+                  <ScalarChip key={t} name={t} />
+                ))}
+              </div>
             </div>
-            <div className={styles.refSection}>
-              <p className={styles.refLabel}>Relation</p>
-              <code className={styles.refCode}>{'author: User @relation(name: "user_posts")\nauthorID: ID'}</code>
+
+            <div id="sdl-required" className={styles.refSection}>
+              <p className={styles.refSectionHead}>Required &amp; arrays</p>
+              <p className={styles.refSectionDesc}>A trailing <code>!</code> means non-null — the write will be rejected if this field is missing. Wrap in <code>[]</code> for a list type.</p>
+              <RefCode>{'name: String!     # required\ntags: [String]    # nullable array\ntags: [String!]!  # required, non-null items'}</RefCode>
             </div>
-            <div className={styles.refSection}>
-              <p className={styles.refLabel}>Array (nullable items)</p>
-              <code className={styles.refCode}>tags: [String]</code>
+
+            <div id="sdl-float" className={styles.refSection}>
+              <p className={styles.refSectionHead}>Float precision</p>
+              <p className={styles.refSectionDesc}><code>Float</code> and <code>Float64</code> are 64-bit IEEE 754. Use <code>Float32</code> when storage size matters and full precision is not needed.</p>
+              <RefCode>{'score: Float32   # 32-bit, ~7 decimal digits\nrating: Float64  # 64-bit, ~15 decimal digits'}</RefCode>
             </div>
-            <div className={styles.refSection}>
-              <p className={styles.refLabel}>Array (non-null items)</p>
-              <code className={styles.refCode}>tags: [String!]</code>
-            </div>
+
+            {/* ── Patch: can't change ───────────────── */}
+            {mode === 'patch' && (
+              <>
+                <p id="sdl-patch-frozen" className={styles.refGroupLabel}>Can't be changed</p>
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionDesc}>These operations will return an error. To make these changes you must create a new collection and migrate data.</p>
+                  <ul className={styles.cantChangeList}>
+                    {([
+                      ['Field name',        'renaming an existing field is not supported'],
+                      ['Field type',        'changing a field\'s data type is not supported'],
+                      ['@crdt type',        'the CRDT merge strategy is fixed at creation time'],
+                      ['@default value',    'existing field defaults cannot be changed'],
+                      ['Collection name',   'collection names are immutable'],
+                      ['@branchable',       'cannot be toggled after creation'],
+                      ['@policy',           'ACP policy cannot be mutated'],
+                      ['@index',            'indexes are managed separately — add or drop via index API'],
+                      ['Field order',       'reordering fields is not supported'],
+                    ] as [string, string][]).map(([label, desc]) => (
+                      <li key={label} className={styles.cantChangeItem}>
+                        <span className={styles.cantChangeCross}>✕</span>
+                        <span className={styles.cantChangeLabel}>{label}</span>
+                        <span className={styles.cantChangeDesc}>— {desc}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+
+            {/* ── Indexing & defaults ───────────────── */}
+            {mode === 'create' && (
+              <>
+                <p id="sdl-indexing" className={styles.refGroupLabel}>Indexing &amp; defaults</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@index</p>
+                  <p className={styles.refSectionDesc}>Without an index, filtering on a field requires scanning every document. Add <code>unique: true</code> to also enforce uniqueness — duplicate writes will fail.</p>
+                  <RefCode>{'name: String @index\nemail: String @index(unique: true)'}</RefCode>
+                </div>
+
+                <div id="sdl-default" className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@default</p>
+                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create. The argument key must match the field type: <code>bool:</code>, <code>int:</code>, <code>float:</code>, or <code>string:</code>.</p>
+                  <RefCode>{'active: Boolean @default(bool: true)\nage: Int @default(int: 0)\nstatus: String @default(string: "draft")'}</RefCode>
+                </div>
+
+                {/* ── Relations ────────────────────────── */}
+                <p id="sdl-relations" className={styles.refGroupLabel}>Relations</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>One-to-many</p>
+                  <p className={styles.refSectionDesc}>DefraDB stores the FK as a companion <code>*ID</code> field. The <code>@relation</code> name must be the same on both sides of the relation.</p>
+                  <RefCode>{'type Post {\n  author: User @relation(name: "user_posts")\n  authorID: ID\n}'}</RefCode>
+                </div>
+
+                <div id="sdl-rel-one" className={styles.refSection}>
+                  <p className={styles.refSectionHead}>One-to-one</p>
+                  <p className={styles.refSectionDesc}><code>@primary</code> marks the owning side, which stores the foreign key. The other side is a back-reference only.</p>
+                  <RefCode>{'type Profile {\n  user: User @primary @relation(name: "user_profile")\n  userID: ID\n}'}</RefCode>
+                </div>
+
+                <div id="sdl-self-rel" className={styles.refSection}>
+                  <p className={styles.refSectionHead}>Self-relation</p>
+                  <p className={styles.refSectionDesc}>A type that references itself — useful for trees, hierarchies, or peer graphs.</p>
+                  <RefCode>{'type Employee {\n  manager: Employee @primary @relation(name: "reports_to")\n  managerID: ID\n  reports: [Employee]\n}'}</RefCode>
+                </div>
+
+                {/* ── Conflict resolution ───────────────── */}
+                <p id="sdl-crdt" className={styles.refGroupLabel}>Conflict resolution</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@crdt</p>
+                  <p className={styles.refSectionDesc}>Controls how concurrent writes to the same field are merged across nodes. Without this, the default is last-write-wins. Use <code>pcounter</code> for increment-only counters (e.g. view counts); <code>pncounter</code> for bidirectional counters (e.g. scores).</p>
+                  <RefCode>{'views: Int @crdt(type: pcounter)    # increment only\nscore: Int @crdt(type: pncounter)   # ± delta\nlabel: String @crdt(type: lww)      # last write wins'}</RefCode>
+                </div>
+
+                {/* ── Collection-level ──────────────────── */}
+                <p id="sdl-collection" className={styles.refGroupLabel}>Collection-level</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@branchable</p>
+                  <p className={styles.refSectionDesc}>Enables commit-graph branching on this collection, similar to git branches. Documents can diverge and later be merged.</p>
+                  <RefCode>{'type Events @branchable {\n  name: String\n}'}</RefCode>
+                </div>
+
+                <div id="sdl-policy" className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@policy</p>
+                  <p className={styles.refSectionDesc}>Attaches an ACP (access-control policy) to the collection. The <code>id</code> must match a policy registered with your ACP provider; <code>resource</code> names the entity within that policy.</p>
+                  <RefCode>{'type Users @policy(\n  id: "acpPolicyId",\n  resource: "users"\n) {\n  name: String\n}'}</RefCode>
+                </div>
+              </>
+            )}
+
+            {mode === 'patch' && (
+              <>
+                {/* ── CRDT for new fields ───────────────── */}
+                <p id="sdl-patch-crdt" className={styles.refGroupLabel}>CRDT for new fields</p>
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@crdt</p>
+                  <p className={styles.refSectionDesc}>You can assign a CRDT merge strategy to new fields. Choose carefully — this cannot be changed later. <code>pncounter</code> / <code>pcounter</code> only apply to <code>Int</code> or <code>Float</code> fields and cannot be indexed.</p>
+                  <RefCode>{'views: Int @crdt(type: pcounter)    # increment only\nscore: Int @crdt(type: pncounter)   # ± delta\nlabel: String @crdt(type: lww)      # last write wins (default)'}</RefCode>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

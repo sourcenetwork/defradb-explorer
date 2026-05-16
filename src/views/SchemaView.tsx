@@ -1,18 +1,21 @@
-import { useState, useCallback, useMemo, useImperativeHandle, useEffect, useRef, forwardRef, lazy, Suspense } from 'react'
+import { useState, useCallback, useMemo, useImperativeHandle, useEffect, useRef, forwardRef } from 'react'
 import { buildClientSchema, printType } from 'graphql'
 import { useIntrospection } from '../hooks/useIntrospection'
 import type { IntrospectionType, IntrospectionField } from '../api/types'
 import { getBaseKind } from '../api/graphql'
 import ResizeHandle from '../components/ResizeHandle'
-const SchemaGraph = lazy(() => import('../components/SchemaGraph'))
+import SchemaGraph from '../components/SchemaGraph'
 import SchemaEditor from '../components/SchemaEditor'
+import { CreateViewForm } from './ViewsView'
+import { useUIStore } from '../store/uiStore'
 import styles from './SchemaView.module.css'
-import { stripDescriptions, highlightSdl, SCALAR_DESCS, attr } from '../lib/sdl'
+import { stripDescriptions, highlightSdl } from '../lib/sdl'
 
 export interface SchemaViewHandle {
-  openCreate:  () => void
-  openPatch:   () => void
-  selectType:  (name: string) => void
+  openCreate:     () => void
+  openPatch:      () => void
+  selectType:     (name: string) => void
+  openCreateView: () => void
 }
 
 const HIDDEN_TYPES = new Set([
@@ -34,24 +37,27 @@ function resolveTypeName(field: IntrospectionField): string {
 
 const MIN_SIDEBAR  = 180
 const MAX_SIDEBAR  = 480
-const DEFAULT_SIDEBAR = 280
 
 const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
   const { data, isLoading, isError } = useIntrospection()
-  const [activeType, setActiveType]     = useState<string | null>(null)
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR)
-  const [viewMode, setViewMode]         = useState<'table' | 'graph' | 'sdl' | 'editor'>('table')
-  const [editorMode, setEditorMode]     = useState<'create' | 'patch'>('create')
+
+  const {
+    schemaSubView: viewMode, setSchemaSubView: setViewMode,
+    schemaEditorMode: editorMode, setSchemaEditorMode: setEditorMode,
+    selectedSchemaType: activeType, setSelectedSchemaType: setActiveType,
+    schemaSidebarWidth: sidebarWidth, setSchemaSidebarWidth: setSidebarWidth,
+  } = useUIStore()
 
   useImperativeHandle(ref, () => ({
-    openCreate:  () => { setEditorMode('create'); setViewMode('editor') },
-    openPatch:   () => { setEditorMode('patch');  setViewMode('editor') },
-    selectType:  (name: string) => { setActiveType(name); setViewMode('table') },
+    openCreate:     () => { setEditorMode('create'); setViewMode('editor') },
+    openPatch:      () => { setEditorMode('patch');  setViewMode('editor') },
+    selectType:     (name: string) => { setActiveType(name); setViewMode('table') },
+    openCreateView: () => setViewMode('create-view'),
   }))
 
   const onResizeSidebar = useCallback((delta: number) => {
-    setSidebarWidth(prev => Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR, prev + delta)))
-  }, [])
+    setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR, sidebarWidth + delta)))
+  }, [setSidebarWidth, sidebarWidth])
 
   const userTypes = useMemo((): IntrospectionType[] => {
     if (!data) return []
@@ -109,11 +115,18 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
     }
   }, [data, userTypes])
 
-  // Editor mode — shown when TabBar "New Type" / "Patch Type" is clicked
   if (viewMode === 'editor') {
     return (
       <div className={styles.schemaShell}>
         <SchemaEditor key={editorMode} initialMode={editorMode} onDone={() => setViewMode('table')} />
+      </div>
+    )
+  }
+
+  if (viewMode === 'create-view') {
+    return (
+      <div className={styles.schemaShell}>
+        <CreateViewForm onDone={() => setViewMode('table')} />
       </div>
     )
   }
@@ -168,9 +181,7 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
 
       {viewMode === 'graph' ? (
         <div className={styles.graphArea}>
-          <Suspense fallback={null}>
-            <SchemaGraph types={data?.__schema.types ?? []} />
-          </Suspense>
+          <SchemaGraph types={data?.__schema.types ?? []} />
         </div>
       ) : viewMode === 'sdl' ? (
         <SdlView sdl={fullSdl} descriptions={sdlDescriptions} />

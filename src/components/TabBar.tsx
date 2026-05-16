@@ -8,18 +8,17 @@ interface Props {
   onExport?:      () => void
   onNewType?:     () => void
   onPatchType?:   () => void
+  onNewView?:     () => void
 }
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'dashboard',   label: 'Dashboard' },
   { id: 'collections', label: 'Collections' },
   { id: 'query',       label: 'Query Runner' },
   { id: 'schema',      label: 'Schema' },
-  { id: 'peers',       label: 'Peers' },
   { id: 'commits',     label: 'Commits' },
 ]
 
-export default function TabBar({ activeTab, onTabChange, onNewDocument, onExport, onNewType, onPatchType }: Props) {
+export default function TabBar({ activeTab, onTabChange, onNewDocument, onExport, onNewType, onPatchType, onNewView }: Props) {
   return (
     <div className={styles.tabBar}>
       {TABS.map(t => (
@@ -39,10 +38,13 @@ export default function TabBar({ activeTab, onTabChange, onNewDocument, onExport
           <button className={styles.btnPrimary} onClick={onNewDocument}>+ New document</button>
         )}
         {activeTab === 'schema' && (
-          <button className={styles.btnSecondary} onClick={onPatchType}>Patch type</button>
+          <button className={styles.btnSecondary} onClick={onPatchType}>Patch collection</button>
         )}
         {activeTab === 'schema' && (
-          <button className={styles.btnPrimary} onClick={onNewType}>+ New type</button>
+          <button className={styles.btnSecondary} onClick={onNewView}>+ New view</button>
+        )}
+        {activeTab === 'schema' && (
+          <button className={styles.btnPrimary} onClick={onNewType}>+ New collection</button>
         )}
       </div>
     </div>

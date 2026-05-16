@@ -16,10 +16,11 @@ function normalizeField(f: Record<string, unknown>): CollectionField {
 function normalizeCollection(c: Record<string, unknown>): CollectionDescription {
   const rawFields = Array.isArray(c.Fields) ? c.Fields as Record<string, unknown>[] : []
   return {
-    name:       String(c.Name ?? ''),
-    id:         String(c.CollectionID ?? ''),
-    version_id: String(c.VersionID ?? ''),
-    fields:     rawFields.map(normalizeField),
+    name:          String(c.Name ?? ''),
+    id:            String(c.CollectionID ?? ''),
+    version_id:    String(c.VersionID ?? ''),
+    fields:        rawFields.map(normalizeField),
+    is_branchable: Boolean(c.IsBranchable ?? false),
   }
 }
 
