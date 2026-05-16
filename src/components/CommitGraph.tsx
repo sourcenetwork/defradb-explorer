@@ -496,7 +496,7 @@ function ChangeDiff({ node, byCID, hoveredParentCID, onOpenInQueryRunner, collec
   )
 }
 
-function CommitDetailSidebar({ node, width, onResize, onClose, onOpenInQueryRunner, onHighlightParent, onSelectParent, onLockParent, byCID, hoveredParentCID, lockedParentCID, collection, headCount, localIdentity }: {
+function CommitDetailSidebar({ node, width, onResize, onClose, onOpenInQueryRunner, onHighlightParent, onSelectParent, onLockParent, byCID, lockedParentCID, collection, headCount, localIdentity }: {
   node: CompositeNode
   width: number
   onResize: (e: React.MouseEvent) => void
@@ -506,7 +506,6 @@ function CommitDetailSidebar({ node, width, onResize, onClose, onOpenInQueryRunn
   onSelectParent?: (cid: string) => void
   onLockParent: (cid: string) => void
   byCID: Map<string, Commit>
-  hoveredParentCID?: string | null
   lockedParentCID: string | null
   collection?: string
   headCount?: number
@@ -860,7 +859,6 @@ function CommitLog({ rows, onOpenInQueryRunner, byCID, collection, localIdentity
           }}
           onLockParent={cid => { setLockedParentCID(cid); scrollToCID(cid) }}
           byCID={byCID}
-          hoveredParentCID={highlighted}
           lockedParentCID={lockedParentCID ?? selectedNode.parentCIDs[0] ?? null}
           collection={collection}
           headCount={headCount}
