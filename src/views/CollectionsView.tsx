@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
 import { Copy, Check, ChevronDown, Search, X, ArrowRight, RotateCw, GitBranch, Pencil } from 'lucide-react'
 import CommitGraph from '../components/CommitGraph'
-import { getNamedType, isInputObjectType, isNonNullType } from 'graphql'
+import { getNamedType, isInputObjectType, isNonNullType, isListType, GraphQLNonNull } from 'graphql'
+import type { GraphQLOutputType } from 'graphql'
 import { useDocuments, useDocumentCount, useDocumentAtVersion, useDocumentById } from '../hooks/useDocuments'
 import { buildDocumentsQuery, buildSearchFilter } from '../api/graphql'
 import { useCollections } from '../hooks/useCollections'
@@ -181,7 +182,41 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const { data: collections } = useCollections()
   const collectionMeta = collections?.find(c => c.name === collection)
 
+  // Relation object fields (e.g. "author") need { _docID } sub-selection in GraphQL.
+  // Detected via relation_name on the REST collection descriptor, excluding the _id FK scalars.
+  const relationFields = useMemo(() =>
+    new Set(
+      (collectionMeta?.fields ?? [])
+        .filter(f => f.relation_name && !f.name.endsWith('_id'))
+        .map(f => f.name)
+    ),
+    [collectionMeta],
+  )
+
   const gqlSchema  = useGraphQLSchema()
+
+  // Split into single-object relations (safe: fetch { _docID }) vs list/many relations
+  // (unsafe in table: could return thousands of rows — excluded from column query).
+  const { singleRelationFields, listRelationFields } = useMemo(() => {
+    const single = new Set<string>()
+    const list   = new Set<string>()
+    if (!gqlSchema) return { singleRelationFields: single, listRelationFields: list }
+    const queryType = gqlSchema.getQueryType()
+    if (!queryType) return { singleRelationFields: relationFields, listRelationFields: list }
+    const collectionField = queryType.getFields()[collection]
+    if (!collectionField) return { singleRelationFields: relationFields, listRelationFields: list }
+    const collType = getNamedType(collectionField.type)
+    const typeFields = 'getFields' in collType ? (collType as { getFields(): Record<string, { type: GraphQLOutputType }> }).getFields() : {}
+    for (const name of relationFields) {
+      const f = typeFields[name]
+      if (!f) { single.add(name); continue }
+      // Unwrap NonNull to check if the inner type is a list
+      const inner = f.type instanceof GraphQLNonNull ? f.type.ofType : f.type
+      if (isListType(inner)) list.add(name)
+      else single.add(name)
+    }
+    return { singleRelationFields: single, listRelationFields: list }
+  }, [gqlSchema, collection, relationFields])
   const createMut  = useCreateDocument(collection)
   const updateMut  = useUpdateDocument(collection)
   const deleteMut  = useDeleteDocument(collection)
@@ -219,7 +254,11 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const hasDocID = !schemaFields || schemaFields.includes('_docID')
   const searchableFields = [
     ...(hasDocID ? [{ name: '_docID', typeName: 'ID' }] : []),
-    ...formFields,
+    // Exclude relation object fields and their _id FK scalars (handled separately below)
+    ...formFields.filter(f => !relationFields.has(f.name) && ![...relationFields].some(r => f.name === `${r}_id`)),
+    // Single relation fields only: search by the related doc's _docID
+    // List (many) relations are excluded — filter syntax is unverified for list types
+    ...[...singleRelationFields].map(name => ({ name, typeName: 'ID' })),
   ]
 
   const searchFieldType = searchableFields.find(f => f.name === searchField)?.typeName ?? 'String'
@@ -235,8 +274,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
     return [...new Set([...systemFields, ...visibleFields])]
   }, [schemaFields, visibleFields])
 
-  const { data, isLoading, isError, error, refetch } = useDocuments(collection, page, search, searchField, searchFieldType, effectiveOp, pageSize, fetchFields)
-  const { data: totalCount = 0 } = useDocumentCount(collection, search, searchField, searchFieldType, effectiveOp)
+  const { data, isLoading, isError, error, refetch } = useDocuments(collection, page, search, searchField, searchFieldType, effectiveOp, pageSize, fetchFields, singleRelationFields)
+  const { data: totalCount = 0 } = useDocumentCount(collection, search, searchField, searchFieldType, effectiveOp, relationFields)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [showNewDoc, setShowNewDoc]   = useState(false)
 
@@ -294,9 +333,10 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const liveQuery = useMemo(() => {
     const fields = fetchFields ?? data?.fields
     if (!fields?.length) return null
-    const filterArg = buildSearchFilter(search, searchField, searchFieldType, effectiveOp)
-    return buildDocumentsQuery(collection, fields, pageSize, offset, filterArg)
-  }, [search, searchField, searchFieldType, effectiveOp, collection, fetchFields, data?.fields, pageSize, offset])
+    const filterArg = buildSearchFilter(search, searchField, searchFieldType, effectiveOp, relationFields)
+    return buildDocumentsQuery(collection, fields, pageSize, offset, filterArg, singleRelationFields)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, searchField, searchFieldType, effectiveOp, collection, fetchFields, data?.fields, pageSize, offset, relationFields])
 
   return (
     <div className={styles.view}>
@@ -321,6 +361,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
         allFields={displayFields}
         visibleFields={visibleFields}
         onToggleColumn={toggleColumn}
+        relationFields={singleRelationFields}
+        listRelationFields={listRelationFields}
       />
 
       {isError && (
@@ -375,6 +417,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
             fields={displayFields}
             collection={collection}
             formFields={formFields}
+            relationFields={singleRelationFields}
             onClose={() => setSelectedIdx(null)}
             onUpdate={(docID, values, original) => updateMut.mutateAsync({ docID, values, typeMap, original })}
             onDelete={async (docID) => {
@@ -598,7 +641,7 @@ function buildPageList(current: number, total: number): (number | null)[] {
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
-function Toolbar({ filter, searching, searchField, searchOp, availableOps, searchableFields, onFilterChange, onSearchFieldChange, onSearchOpChange, onRefresh, allFields, visibleFields, onToggleColumn }: {
+function Toolbar({ filter, searching, searchField, searchOp, availableOps, searchableFields, onFilterChange, onSearchFieldChange, onSearchOpChange, onRefresh, allFields, visibleFields, onToggleColumn, relationFields, listRelationFields }: {
   filter: string
   searching: boolean
   searchField: string
@@ -612,6 +655,8 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
   allFields: string[]
   visibleFields: Set<string>
   onToggleColumn: (f: string) => void
+  relationFields?: Set<string>
+  listRelationFields?: Set<string>
 }) {
   const [colsOpen, setColsOpen] = useState(false)
   const colsRef = useRef<HTMLDivElement>(null)
@@ -627,6 +672,7 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
 
   const hiddenCount = allFields.filter(f => !visibleFields.has(f)).length
   const wildcardOp = ['_ilike', '_nilike', '_like', '_nlike'].includes(searchOp)
+  const showWildcardHint = wildcardOp && !filter.includes('%')
 
   return (
     <div className={styles.toolbar}>
@@ -663,7 +709,7 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
           <Search size={11} style={{ flexShrink: 0, color: 'var(--gray-600)' }} />
         )}
         <div className={styles.searchInputWrap}>
-          {wildcardOp && <span className={styles.searchWildcard}>%</span>}
+          {showWildcardHint && <span className={styles.searchWildcard}>%</span>}
           <input
             type="text"
             placeholder={searchField ? `Search by ${searchField}…` : 'Choose a field first…'}
@@ -671,7 +717,7 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
             disabled={!searchField}
             onChange={e => onFilterChange(e.target.value)}
           />
-          {wildcardOp && <span className={styles.searchWildcard}>%</span>}
+          {showWildcardHint && <span className={styles.searchWildcard}>%</span>}
           {filter && (
             <button className={styles.searchClear} onClick={() => onFilterChange('')} aria-label="Clear search">
               <X size={8} />
@@ -698,7 +744,17 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
                   className={styles.colsCheckbox}
                 />
                 <span className={styles.colsLabel}>{f}</span>
+                {relationFields?.has(f) && (
+                  <span className={styles.colsRelBadge}>rel</span>
+                )}
               </label>
+            ))}
+            {listRelationFields && [...listRelationFields].map(f => (
+              <div key={f} className={`${styles.colsItem} ${styles.colsItemDisabled}`} title="Many-relation columns are not shown in the table to avoid fetching large datasets">
+                <input type="checkbox" disabled className={styles.colsCheckbox} />
+                <span className={styles.colsLabel}>{f}</span>
+                <span className={styles.colsRelBadge}>many</span>
+              </div>
             ))}
           </div>
         )}
@@ -763,7 +819,11 @@ function DocumentTable({ rows, fields, selectedIdx, onSelect, onNewDoc }: {
 function formatCell(field: string, value: unknown): string {
   if (value === null || value === undefined) return '—'
   if (field === '_docID') return String(value).slice(0, 18) + '…'
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>
+    if (obj._docID) return `→ ${String(obj._docID).slice(0, 18)}…`
+    return JSON.stringify(value)
+  }
   return String(value)
 }
 
@@ -771,11 +831,12 @@ function formatCell(field: string, value: unknown): string {
 
 type PanelMode = 'view' | 'history' | 'graph'
 
-function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
+function DetailPanel({ doc, fields, collection, formFields, relationFields, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
   doc:                Record<string, unknown>
   fields:             string[]
   collection:         string
   formFields:         FormField[]
+  relationFields?:    Set<string>
   onClose:            () => void
   onUpdate:           (docID: string, values: FormValues, original: FormValues) => Promise<unknown>
   onDelete:           (docID: string) => Promise<void>
@@ -815,7 +876,7 @@ function DetailPanel({ doc, fields, collection, formFields, onClose, onUpdate, o
   }
 
   const { data: commits, isLoading: histLoading, error: histError, refetch: refetchCommits } = useDocumentCommits(docID)
-  const { data: fullDoc, refetch: refetchDoc } = useDocumentById(collection, docID, fields)
+  const { data: fullDoc, refetch: refetchDoc } = useDocumentById(collection, docID, fields, relationFields)
   const currentVersion = commits?.[0]?.height ?? null
 
   const editableFields: FormField[] = formFields.length > 0

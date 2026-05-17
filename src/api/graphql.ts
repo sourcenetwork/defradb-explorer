@@ -158,9 +158,14 @@ export function isScalarField(type: IntrospectionTypeRef): boolean {
 
 /** Build a paginated GraphQL query for a collection */
 /** Build a targeted single-field filter arg string. */
-export function buildSearchFilter(term: string, field: string, fieldType = 'String', op = ''): string {
+export function buildSearchFilter(term: string, field: string, fieldType = 'String', op = '', relationFields?: Set<string>): string {
   if (!term.trim() || !field) return ''
   const t = term.trim()
+
+  // Relation object fields: filter via nested _docID rather than a direct operator
+  if (relationFields?.has(field)) {
+    return `filter: { ${field}: { _docID: { _eq: ${JSON.stringify(t)} } } }`
+  }
 
   // Default operator by type
   const defaultOp = (fieldType === 'String' && field !== '_docID') ? '_ilike' : '_eq'
@@ -179,7 +184,7 @@ export function buildSearchFilter(term: string, field: string, fieldType = 'Stri
     if (isNaN(n)) return ''
     value = String(n)
   } else if (['_ilike', '_nilike', '_like', '_nlike'].includes(operator)) {
-    value = JSON.stringify(`%${t}%`)
+    value = JSON.stringify(t.includes('%') ? t : `%${t}%`)
   } else {
     value = JSON.stringify(t)
   }
@@ -187,9 +192,12 @@ export function buildSearchFilter(term: string, field: string, fieldType = 'Stri
   return `filter: { ${field}: { ${operator}: ${value} } }`
 }
 
-export function buildDocumentsQuery(typeName: string, fields: string[], limit: number, offset: number, filterArg = ''): string {
+export function buildDocumentsQuery(typeName: string, fields: string[], limit: number, offset: number, filterArg = '', relationFields?: Set<string>): string {
   const args = [filterArg, `limit: ${limit}`, `offset: ${offset}`].filter(Boolean).join(', ')
-  return `{ ${typeName}(${args}) {\n${fields.map(f => `    ${f}`).join('\n')}\n  } }`
+  const selection = fields.map(f =>
+    relationFields?.has(f) ? `    ${f} { _docID }` : `    ${f}`
+  ).join('\n')
+  return `{ ${typeName}(${args}) {\n${selection}\n  } }`
 }
 
 /** Build a count query using DefraDB's top-level COUNT aggregate */

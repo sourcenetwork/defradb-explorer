@@ -581,6 +581,27 @@
   font-size: 12px;
   color: var(--subtitle);
   white-space: nowrap;
+  flex: 1;
+}
+
+.colsRelBadge {
+  font-size: 9px;
+  font-family: 'CommitMono', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(16, 203, 255, 0.08);
+  border: 1px solid rgba(16, 203, 255, 0.2);
+  color: var(--defradb);
+  flex-shrink: 0;
+}
+
+.colsItemDisabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
 }
 
 .btnPrimary:hover:not(:disabled) {
