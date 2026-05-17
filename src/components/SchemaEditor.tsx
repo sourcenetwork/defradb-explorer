@@ -418,9 +418,8 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
                 </div>
 
                 <div className={styles.refSection}>
-                  <p className={styles.refSectionHead}>Remove a field</p>
-                  <p className={styles.refSectionDesc}>To remove a field, omit it and include a <code>@remove</code> directive. Fields that have a dependent <code>@index</code> must have the index deleted first.</p>
-                  <RefCode>{'type User {\n  legacyField: String @remove\n}'}</RefCode>
+                  <p className={styles.refSectionHead}>Can't remove fields</p>
+                  <p className={styles.refSectionDesc}>DefraDB does not support removing fields from an existing collection. Patches can only add new fields.</p>
                 </div>
               </>
             )}
