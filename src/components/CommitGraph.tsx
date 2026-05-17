@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import { Copy, Check, ArrowUpDown, ExternalLink, ArrowDown } from 'lucide-react'
 import { useDocumentCommits, useNodeIdentity } from '../hooks/useCommits'
 import type { Commit } from '../hooks/useCommits'
+import { buildGraph, computeLayout, parseFieldDelta, displayVal } from '../lib/commitGraph'
+import type { CompositeNode, LayoutRow } from '../lib/commitGraph'
 import styles from './CommitGraph.module.css'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -20,140 +22,10 @@ function commitQuery(cid: string) {
 }
 
 function fieldAtVersionQuery(collection: string, compositeCID: string, fieldName: string) {
-  return `{\n  ${collection}(cid: ${JSON.stringify([compositeCID])}) {\n    _docID\n    ${fieldName}\n  }\n}`
+  return `{\n  ${collection}(cid: ${JSON.stringify(compositeCID)}) {\n    _docID\n    ${fieldName}\n  }\n}`
 }
 
-// ── Data model ────────────────────────────────────────────────────────────────
-
-interface CompositeNode {
-  cid:           string
-  height:        number
-  parentCIDs:    string[]
-  changedFields: { fieldName: string; commit: Commit }[]
-  isLatest:      boolean
-  isRoot:        boolean
-  isMerge:       boolean   // has 2+ parents
-  identity:      string | null
-}
-
-function buildGraph(commits: Commit[]) {
-  if (!commits.length) return { nodes: [], allFieldNames: [], byCID: new Map<string, Commit>() }
-
-  const byCID = new Map(commits.map(c => [c.cid, c]))
-
-  const allFieldNames = [
-    ...new Set(commits.filter(c => c.fieldName && c.fieldName !== '_C').map(c => c.fieldName!)),
-  ].sort()
-
-  const composites = commits.filter(c => c.fieldName === '_C')
-  composites.sort((a, b) => b.height - a.height || a.cid.localeCompare(b.cid))
-
-  const maxHeight = composites.length > 0 ? composites[0].height : 0
-
-  // Index composites by height so we can infer parent relationships.
-  // DefraDB's _commits links field only returns field-commit links, not the
-  // parent composite link, so we derive ancestry from height ordering:
-  //   parent(h) = all composites at h-1
-  // This is exact for linear histories and correctly identifies forks/merges:
-  //   • two composites at height H  → concurrent writes (shared parent at H-1)
-  //   • one composite at height H+1 after two at H → merge commit (2 parents)
-  const byHeight = new Map<number, Commit[]>()
-  for (const c of composites) {
-    const arr = byHeight.get(c.height) ?? []
-    arr.push(c)
-    byHeight.set(c.height, arr)
-  }
-
-  const nodes: CompositeNode[] = composites.map(c => {
-    const parentCIDs = c.height === 1
-      ? []
-      : (byHeight.get(c.height - 1) ?? []).map(p => p.cid)
-
-    const changedFields = c.links
-      .filter(l => l.fieldName && l.fieldName !== '_C' && byCID.has(l.cid))
-      .map(l => ({ fieldName: l.fieldName!, commit: byCID.get(l.cid)! }))
-
-    return {
-      cid:          c.cid,
-      height:       c.height,
-      parentCIDs,
-      changedFields,
-      isLatest:     c.height === maxHeight,
-      isRoot:       c.height === 1,
-      isMerge:      parentCIDs.length > 1,
-      identity:     c.signature?.identity ?? null,
-    }
-  })
-
-  return { nodes, allFieldNames, byCID }
-}
-
-// ── Lane layout ───────────────────────────────────────────────────────────────
-//
-// Classic git-graph lane algorithm:
-//   activeLanes[k] = CID of the commit "expected" in lane k as we scan downward.
-//   For each commit (newest → oldest):
-//     1. Find or assign its lane.
-//     2. Replace that slot with first parent (lane continues).
-//        If first parent is already in another lane, record convergence and free this lane.
-//     3. Each additional parent opens a new lane (fork).
-//
-interface LayoutRow {
-  node:         CompositeNode
-  lane:         number
-  lanesAfter:   (string | null)[]   // lane state after this row
-  convergeTo:   number | null        // this lane closes and points toward convergeTo
-  newLanes:     number[]             // lane indices that opened at this row (forks)
-}
-
-function computeLayout(nodes: CompositeNode[]): LayoutRow[] {
-  const active: (string | null)[] = []
-  const rows: LayoutRow[] = []
-
-  for (const node of nodes) {
-    // Find or assign this node's lane
-    let myLane = active.indexOf(node.cid)
-    if (myLane === -1) {
-      myLane = active.indexOf(null)
-      if (myLane === -1) { myLane = active.length; active.push(null) }
-    }
-
-    let convergeTo: number | null = null
-    const newLanes: number[] = []
-
-    if (node.parentCIDs.length === 0) {
-      // Root — free this lane
-      active[myLane] = null
-    } else {
-      const firstParentLane = active.indexOf(node.parentCIDs[0])
-      if (firstParentLane !== -1 && firstParentLane !== myLane) {
-        // First parent already tracked elsewhere → this lane converges to it
-        active[myLane] = null
-        convergeTo = firstParentLane
-      } else {
-        active[myLane] = node.parentCIDs[0]
-      }
-
-      // Additional parents (merge commit) → open new lanes
-      for (let i = 1; i < node.parentCIDs.length; i++) {
-        if (active.indexOf(node.parentCIDs[i]) === -1) {
-          const free = active.indexOf(null)
-          const idx  = free !== -1 ? free : active.length
-          if (idx === active.length) active.push(node.parentCIDs[i])
-          else active[idx] = node.parentCIDs[i]
-          newLanes.push(idx)
-        }
-      }
-    }
-
-    // Trim trailing nulls
-    while (active.length > 0 && active[active.length - 1] === null) active.pop()
-
-    rows.push({ node, lane: myLane, lanesAfter: [...active], convergeTo, newLanes })
-  }
-
-  return rows
-}
+// ── Data model & graph builder imported from lib/commitGraph ─────────────────
 
 // Ascending variant: processes nodes oldest→newest, tracks children instead of parents.
 function computeAscendingLayout(nodes: CompositeNode[]): LayoutRow[] {
@@ -343,36 +215,6 @@ function QueryRunnerButton({ cid, onOpen }: { cid: string; onOpen?: (query: stri
       <ExternalLink size={11} />
     </button>
   )
-}
-
-function parseFieldDelta(delta: string | null, fieldName: string): string {
-  if (!delta) return '—'
-  try {
-    const parsed = JSON.parse(delta)
-    const val = parsed[fieldName] ?? parsed[Object.keys(parsed)[0]]
-    if (val === null || val === undefined) return 'null'
-    return typeof val === 'string' ? val : JSON.stringify(val)
-  } catch { return delta }
-}
-
-// Display-only formatting — parseFieldDelta returns raw values used for equality
-// checks; displayVal formats them for rendering without affecting comparisons.
-function displayVal(raw: string): string {
-  if (raw === '—' || raw === 'null') return raw
-  if (raw.startsWith('{') || raw.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return `[${parsed.length} item${parsed.length !== 1 ? 's' : ''}]`
-      if (parsed._docID) return `→ ${String(parsed._docID).slice(0, 16)}…`
-      return '{object}'
-    } catch { /* not valid JSON, fall through */ }
-  }
-  if (raw.length > 120) {
-    if (/^[A-Za-z0-9+/]+=*$/.test(raw))
-      return `[binary ~${Math.round(raw.length * 0.75 / 1024)} KB]`
-    return raw.slice(0, 120) + '…'
-  }
-  return raw
 }
 
 function findPrevFieldCommit(fieldName: string, currentHeight: number, byCID: Map<string, Commit>): Commit | undefined {

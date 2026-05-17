@@ -323,7 +323,8 @@ function DocTimeline({ docID }: { docID: string }) {
 interface Jump { docID: string; seq: number }
 
 function isCIDInput(s: string) {
-  return s.startsWith('bafy') || s.startsWith('bafk') || s.startsWith('bafz')
+  // CIDv1: base32 (bafy/bafk/bagc/bafcr), base58btc (Qm/z), base64url (u), base16 (f01)
+  return /^(ba[fgy][a-z2-7]{4}|bagc|bafcr|Qm[1-9A-HJ-NP-Za-km-z]{44}|z[1-9A-HJ-NP-Za-km-z]{10}|f01)/.test(s)
 }
 
 export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollections }: {
