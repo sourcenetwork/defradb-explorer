@@ -57,18 +57,9 @@ describe('buildGraph', () => {
     expect(nodes[1].isRoot).toBe(true)
   })
 
-  it('uses actual _C parent links when present', () => {
+  it('infers single parent by height when one commit exists at h-1', () => {
     const c1 = composite('c1', 1)
-    // c2 explicitly links to c1 as a _C parent
-    const c2 = composite('c2', 2, [{ cid: 'c1', fieldName: '_C', height: 1 }])
-    const { nodes } = buildGraph([c1, c2])
-    const n2 = nodes.find(n => n.cid === 'c2')!
-    expect(n2.parentCIDs).toEqual(['c1'])
-  })
-
-  it('falls back to height inference when no _C links present', () => {
-    const c1 = composite('c1', 1)
-    const c2 = composite('c2', 2) // no links at all
+    const c2 = composite('c2', 2)
     const { nodes } = buildGraph([c1, c2])
     const n2 = nodes.find(n => n.cid === 'c2')!
     expect(n2.parentCIDs).toEqual(['c1'])
@@ -88,16 +79,25 @@ describe('buildGraph', () => {
     expect(merge.parentCIDs).toContain('c2b')
   })
 
-  it('does NOT create false merge when using actual _C links', () => {
-    // Two branches at h=2 but c3 only links to c2a
+  it('sets parentsInferred when 2+ parents come from height inference', () => {
     const c1  = composite('c1',  1)
     const c2a = composite('c2a', 2)
     const c2b = composite('c2b', 2)
-    const c3  = composite('c3',  3, [{ cid: 'c2a', fieldName: '_C', height: 2 }])
+    const c3  = composite('c3',  3)
     const { nodes } = buildGraph([c1, c2a, c2b, c3])
+    // c3 at h=3 infers parents from h=2 → both c2a and c2b (may include false edges)
     const n3 = nodes.find(n => n.cid === 'c3')!
-    expect(n3.isMerge).toBe(false)
-    expect(n3.parentCIDs).toEqual(['c2a'])
+    expect(n3.parentsInferred).toBe(true)
+    expect(n3.parentCIDs).toContain('c2a')
+    expect(n3.parentCIDs).toContain('c2b')
+  })
+
+  it('does not set parentsInferred for single-parent inference (exact)', () => {
+    const c1 = composite('c1', 1)
+    const c2 = composite('c2', 2)
+    const { nodes } = buildGraph([c1, c2])
+    const n2 = nodes.find(n => n.cid === 'c2')!
+    expect(n2.parentsInferred).toBe(false)
   })
 
   it('collects changed field names', () => {

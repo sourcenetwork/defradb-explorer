@@ -93,6 +93,10 @@
   flex-shrink: 0;
 }
 
+.mergeNoteInferred {
+  opacity: 0.55;
+}
+
 .sidebarParentVersion {
   font-size: 11px;
   font-family: 'CommitMono', monospace;

@@ -134,26 +134,27 @@ function GraphSVG({ rows, visStart, visEnd, highlightEdge }: {
         return
       }
 
-      const isHot  = highlightEdge?.from === row.node.cid && highlightEdge?.to === parentCID
+      const isHot   = highlightEdge?.from === row.node.cid && highlightEdge?.to === parentCID
       const dimEdge = !!highlightEdge && !isHot
-      const pRow   = rows[pIdx]
-      const x2     = lx(pRow.lane)
-      const y2     = ry(pIdx)
-      const dist   = y2 - y1
-      const T      = Math.max(dist * 0.5, Math.abs(x2 - x1) * 0.6, 14)
-      const target = isHot ? hotEdges : edges
+      const pRow    = rows[pIdx]
+      const x2      = lx(pRow.lane)
+      const y2      = ry(pIdx)
+      const dist    = y2 - y1
+      const T       = Math.max(dist * 0.5, Math.abs(x2 - x1) * 0.6, 14)
+      const target  = isHot ? hotEdges : edges
+      const opacity = isHot ? 1 : dimEdge ? 0.28 : 0.45
 
       if (Math.abs(x1 - x2) < 0.5) {
         target.push(
           <line key={`edge-${i}-${pIdx}`}
             x1={x1} y1={y1 + DOT_R} x2={x2} y2={y2 - DOT_R}
-            stroke={color} strokeWidth={isHot ? 2.5 : 1.5} opacity={isHot ? 1 : dimEdge ? 0.28 : 0.45} />
+            stroke={color} strokeWidth={isHot ? 2.5 : 1.5} opacity={opacity} />
         )
       } else {
         target.push(
           <path key={`edge-${i}-${pIdx}`}
             d={`M ${x1},${y1 + DOT_R} C ${x1},${y1 + T} ${x2},${y2 - T} ${x2},${y2 - DOT_R}`}
-            fill="none" stroke={color} strokeWidth={isHot ? 2.5 : 1.5} opacity={isHot ? 1 : dimEdge ? 0.28 : 0.45} />
+            fill="none" stroke={color} strokeWidth={isHot ? 2.5 : 1.5} opacity={opacity} />
         )
       }
     })
@@ -382,6 +383,9 @@ function CommitDetailSidebar({ node, width, onResize, onClose, onOpenInQueryRunn
         {node.isMerge && (
           <div className={styles.mergeNote}>
             Merged {node.parentCIDs.length} concurrent writes at v{node.height - 1}
+            {node.parentsInferred && (
+              <span className={styles.mergeNoteInferred}> · edges inferred</span>
+            )}
           </div>
         )}
 
@@ -392,9 +396,9 @@ function CommitDetailSidebar({ node, width, onResize, onClose, onOpenInQueryRunn
           </div>
         )}
 
-        {/* Composite CID */}
+        {/* Commit CID */}
         <div className={styles.sidebarSection}>
-          <div className={styles.sidebarLabel}>composite cid</div>
+          <div className={styles.sidebarLabel}>commit cid</div>
           <div className={styles.sidebarCIDRow}>
             <span className={styles.sidebarCIDFull}>{node.cid}</span>
             <CopyButton text={node.cid} />

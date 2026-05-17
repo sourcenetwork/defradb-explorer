@@ -6,11 +6,12 @@ export interface CompositeNode {
   cid:           string
   height:        number
   parentCIDs:    string[]
-  changedFields: { fieldName: string; commit: Commit }[]
-  isLatest:      boolean
-  isRoot:        boolean
-  isMerge:       boolean
-  identity:      string | null
+  changedFields:   { fieldName: string; commit: Commit }[]
+  isLatest:        boolean
+  isRoot:          boolean
+  isMerge:         boolean
+  parentsInferred: boolean  // true when 2+ parents come from height inference (may include false edges)
+  identity:        string | null
 }
 
 export interface LayoutRow {
@@ -45,31 +46,27 @@ export function buildGraph(commits: Commit[]) {
   }
 
   const nodes: CompositeNode[] = composites.map(c => {
-    // Prefer actual parent composite links (fieldName === '_C') when the API returns them.
-    // Fall back to height-based inference only when none are present — the height
-    // approach creates false edges for histories with diverged branches at the same height.
-    const actualParentCIDs = c.links
-      .filter(l => l.fieldName === '_C' && byCID.has(l.cid))
-      .map(l => l.cid)
-    const parentCIDs = c.height === 1
-      ? []
-      : actualParentCIDs.length > 0
-        ? actualParentCIDs
-        : (byHeight.get(c.height - 1) ?? []).map(p => p.cid)
+    // Parent composite CIDs are not returned by the _commits API — height inference
+    // is the only option. parent(h) = all composites at h-1. This is exact when
+    // there is exactly one composite at h-1, but creates false edges when two or
+    // more concurrent branches exist at the same height.
+    const parentsAtPrevHeight = c.height === 1 ? [] : (byHeight.get(c.height - 1) ?? [])
+    const parentCIDs = parentsAtPrevHeight.map(p => p.cid)
 
     const changedFields = c.links
       .filter(l => l.fieldName && l.fieldName !== '_C' && byCID.has(l.cid))
       .map(l => ({ fieldName: l.fieldName!, commit: byCID.get(l.cid)! }))
 
     return {
-      cid:          c.cid,
-      height:       c.height,
+      cid:             c.cid,
+      height:          c.height,
       parentCIDs,
       changedFields,
-      isLatest:     c.height === maxHeight,
-      isRoot:       c.height === 1,
-      isMerge:      parentCIDs.length > 1,
-      identity:     c.signature?.identity ?? null,
+      isLatest:        c.height === maxHeight,
+      isRoot:          c.height === 1,
+      isMerge:         parentCIDs.length > 1,
+      parentsInferred: parentCIDs.length > 1,
+      identity:        c.signature?.identity ?? null,
     }
   })
 
