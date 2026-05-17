@@ -36,13 +36,7 @@ interface QueryTab {
 }
 
 const DEFAULT_QUERY = `{
-  User(limit: 10) {
-    _docID
-    name
-    email
-    role
-    createdAt
-  }
+
 }`
 
 const INTROSPECTION_QUERY = `{
