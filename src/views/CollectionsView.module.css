@@ -604,6 +604,26 @@
   pointer-events: none;
 }
 
+.listRelLoadBtn {
+  background: none;
+  border: 1px solid var(--dark-border-2);
+  border-radius: 4px;
+  color: var(--defradb);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 3px 8px;
+  opacity: 0.75;
+  transition: opacity 0.1s;
+}
+.listRelLoadBtn:hover { opacity: 1; }
+
+.listRelResults {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .btnPrimary:hover:not(:disabled) {
   background: var(--green-hover);
   border-color: var(--green-hover);
@@ -955,6 +975,30 @@
   background: rgba(16, 203, 255, 0.12);
   color: var(--defradb);
 }
+
+.detailSecondaryBar {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--dark-border);
+  flex-shrink: 0;
+}
+
+.detailSecondaryBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  color: var(--defradb);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.8;
+  transition: opacity 0.1s;
+}
+.detailSecondaryBtn:hover { opacity: 1; }
 
 .detailBody {
   flex: 1;

@@ -4,7 +4,7 @@ import CommitGraph from '../components/CommitGraph'
 import { getNamedType, isInputObjectType, isNonNullType, isListType, GraphQLNonNull } from 'graphql'
 import type { GraphQLOutputType } from 'graphql'
 import { useDocuments, useDocumentCount, useDocumentAtVersion, useDocumentById } from '../hooks/useDocuments'
-import { buildDocumentsQuery, buildSearchFilter } from '../api/graphql'
+import { buildDocumentsQuery, buildSearchFilter, executeGraphQL } from '../api/graphql'
 import { useCollections } from '../hooks/useCollections'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
 import {
@@ -14,6 +14,7 @@ import type { FormValues, TypeMap } from '../hooks/useDocumentMutations'
 import { useDocumentCommits } from '../hooks/useCommits'
 import { useCollectionIndexes } from '../hooks/useCollectionIndexes'
 import { useUIStore } from '../store/uiStore'
+import { useConfig } from '../context/ConfigContext'
 import styles from './CollectionsView.module.css'
 
 const OPERATORS_BY_TYPE: Record<string, string[]> = {
@@ -322,9 +323,11 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
     openNewDoc: () => setShowNewDoc(true),
     exportDocs: handleExport,
     openDoc: (docID: string) => {
-      setSearchField('_docID')
-      setFilter(docID)
-      setPage(1)
+      if (hasDocID) {
+        setSearchField('_docID')
+        setFilter(docID)
+        setPage(1)
+      }
     },
   }))
 
@@ -412,12 +415,14 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
 
         {selected && (
           <DetailPanel
-            key={String(selected._docID)}
+            key={String(selected._docID ?? selectedIdx)}
             doc={selected as Record<string, unknown>}
             fields={displayFields}
             collection={collection}
             formFields={formFields}
             relationFields={singleRelationFields}
+            listRelationFields={listRelationFields}
+            hasDocID={hasDocID}
             onClose={() => setSelectedIdx(null)}
             onUpdate={(docID, values, original) => updateMut.mutateAsync({ docID, values, typeMap, original })}
             onDelete={async (docID) => {
@@ -827,16 +832,73 @@ function formatCell(field: string, value: unknown): string {
   return String(value)
 }
 
+// ── List relation field (on-demand fetch) ────────────────────────────────────
+
+function ListRelationField({ name, collection, docID }: { name: string; collection: string; docID: string }) {
+  const { config } = useConfig()
+  const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [docIDs, setDocIDs] = useState<string[]>([])
+  const [err, setErr] = useState<string | null>(null)
+
+  async function load() {
+    setState('loading')
+    try {
+      const query = `{ ${collection}(filter: { _docID: { _eq: ${JSON.stringify(docID)} } }) { ${name} { _docID } } }`
+      const res = await executeGraphQL<Record<string, { [field: string]: { _docID: string }[] }[]>>(config, query)
+      if (res.errors?.length) throw new Error(res.errors[0].message)
+      const rows = (res.data?.[collection] ?? []) as Record<string, { _docID: string }[]>[]
+      const ids = (rows[0]?.[name] ?? []).map((r: { _docID: string }) => r._docID)
+      setDocIDs(ids)
+      setState('done')
+    } catch (e) {
+      setErr((e as Error).message)
+      setState('error')
+    }
+  }
+
+  return (
+    <div className={styles.fieldGroup}>
+      <div className={styles.fieldKeyRow}>
+        <p className={styles.fieldKey}>{name}</p>
+        <span className={styles.colsRelBadge}>many</span>
+      </div>
+      <div className={styles.fieldVal}>
+        {state === 'idle' && (
+          <button className={styles.listRelLoadBtn} onClick={load}>Load related</button>
+        )}
+        {state === 'loading' && (
+          <span style={{ color: 'var(--gray-600)' }}>Loading…</span>
+        )}
+        {state === 'error' && (
+          <span style={{ color: '#FF5F57', fontSize: 11 }}>{err}</span>
+        )}
+        {state === 'done' && docIDs.length === 0 && (
+          <span style={{ color: 'var(--gray-600)' }}>none</span>
+        )}
+        {state === 'done' && docIDs.length > 0 && (
+          <div className={styles.listRelResults}>
+            {docIDs.map(id => (
+              <span key={id} className={styles.fieldValRef}>→ {id}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Detail panel ──────────────────────────────────────────────────────────────
 
 type PanelMode = 'view' | 'history' | 'graph'
 
-function DetailPanel({ doc, fields, collection, formFields, relationFields, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
+function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
   doc:                Record<string, unknown>
   fields:             string[]
   collection:         string
   formFields:         FormField[]
   relationFields?:    Set<string>
+  listRelationFields?: Set<string>
+  hasDocID?:          boolean
   onClose:            () => void
   onUpdate:           (docID: string, values: FormValues, original: FormValues) => Promise<unknown>
   onDelete:           (docID: string) => Promise<void>
@@ -953,23 +1015,42 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, onCl
         </div>
       </div>
 
+      {/* Persistent action bar */}
+      {onOpenInQueryRunner && (
+        <div className={styles.detailSecondaryBar}>
+          <button className={styles.detailSecondaryBtn} onClick={() => {
+            const sel = fields.map(f => relationFields?.has(f) ? `${f} { _docID }` : f).join(' ')
+            const query = hasDocID && docID
+              ? `{ ${collection}(filter: { _docID: { _eq: ${JSON.stringify(docID)} } }) { ${sel} } }`
+              : `{ ${collection} { ${sel} } }`
+            onOpenInQueryRunner(query)
+          }}>
+            <ArrowRight size={10} /> Open in Query Runner
+          </button>
+        </div>
+      )}
+
       {/* Tab bar */}
       <div className={styles.detailTabs}>
         <button className={`${styles.detailTab} ${mode === 'view' ? styles.detailTabActive : ''}`}
           onClick={() => { setMode('view'); setIsEditing(false); setMutErr(null) }}>
           Fields
         </button>
-        <button className={`${styles.detailTab} ${mode === 'history' ? styles.detailTabActive : ''}`}
-          onClick={() => { setMode('history'); setIsEditing(false) }}>
-          History
-          {currentVersion !== null && (
-            <span className={`${styles.detailTabBadge} ${mode === 'history' ? styles.detailTabBadgeActive : ''}`}>{currentVersion}</span>
-          )}
-        </button>
-        <button className={`${styles.detailTab} ${mode === 'graph' ? styles.detailTabActive : ''}`}
-          onClick={() => { setMode('graph'); setIsEditing(false) }}>
-          <GitBranch size={11} /> Graph
-        </button>
+        {hasDocID !== false && (
+          <button className={`${styles.detailTab} ${mode === 'history' ? styles.detailTabActive : ''}`}
+            onClick={() => { setMode('history'); setIsEditing(false) }}>
+            History
+            {currentVersion !== null && (
+              <span className={`${styles.detailTabBadge} ${mode === 'history' ? styles.detailTabBadgeActive : ''}`}>{currentVersion}</span>
+            )}
+          </button>
+        )}
+        {hasDocID !== false && (
+          <button className={`${styles.detailTab} ${mode === 'graph' ? styles.detailTabActive : ''}`}
+            onClick={() => { setMode('graph'); setIsEditing(false) }}>
+            <GitBranch size={11} /> Graph
+          </button>
+        )}
       </div>
 
       {mutErr && <div className={styles.detailError}>{mutErr}</div>}
@@ -981,7 +1062,7 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, onCl
             {/* Fields section header with Edit toggle */}
             <div className={styles.detailSectionLabelRow}>
               <p className={styles.detailSectionLabel}>Fields</p>
-              {editableFields.length > 0 && !isEditing && (
+              {editableFields.length > 0 && !isEditing && hasDocID !== false && (
                 <button className={styles.editToggleBtn} onClick={startEdit}>
                   <Pencil size={10} /> Edit
                 </button>
@@ -1017,22 +1098,27 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, onCl
                 </div>
               ))
             ) : (
-              fields.map(f => {
-                const viewDoc = fullDoc ?? doc
-                return (
-                  <div key={f} className={styles.fieldGroup}>
-                    <div className={styles.fieldKeyRow}>
-                      <p className={styles.fieldKey}>{f}</p>
-                      {f === '_docID' && viewDoc[f] != null && (
-                        <HistCopyButton text={String(viewDoc[f])} />
-                      )}
+              <>
+                {fields.map(f => {
+                  const viewDoc = fullDoc ?? doc
+                  return (
+                    <div key={f} className={styles.fieldGroup}>
+                      <div className={styles.fieldKeyRow}>
+                        <p className={styles.fieldKey}>{f}</p>
+                        {f === '_docID' && viewDoc[f] != null && (
+                          <HistCopyButton text={String(viewDoc[f])} />
+                        )}
+                      </div>
+                      <p className={`${styles.fieldVal} ${f === '_docID' ? styles.fieldValMono : ''}`}>
+                        <FieldValue value={viewDoc[f]} />
+                      </p>
                     </div>
-                    <p className={`${styles.fieldVal} ${f === '_docID' ? styles.fieldValMono : ''}`}>
-                      <FieldValue value={viewDoc[f]} />
-                    </p>
-                  </div>
-                )
-              })
+                  )
+                })}
+                {listRelationFields && [...listRelationFields].map(f => (
+                  <ListRelationField key={f} name={f} collection={collection} docID={docID} />
+                ))}
+              </>
             )}
           </>
         )}
@@ -1124,8 +1210,8 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, onCl
         )}
       </div>
 
-      {/* Footer actions — only shown in fields view */}
-      {mode === 'view' && <div className={styles.detailActions}>
+      {/* Footer actions — only shown in fields view for documents with a docID */}
+      {mode === 'view' && hasDocID !== false && <div className={styles.detailActions}>
         {!deleteConfirm ? (
           <button
             className={`${styles.btnSmAction} ${styles.btnSmActionDanger}`}

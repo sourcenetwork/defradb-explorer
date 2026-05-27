@@ -11,7 +11,6 @@ function makeCommit(overrides: Partial<Commit> & { cid: string; height: number; 
     signature: null,
     docID: 'bae-doc1',
     collectionVersionId: 'col-v1',
-    schemaVersionId: 'schema-v1',
     ...overrides,
   }
 }
@@ -144,6 +143,7 @@ function n(cid: string, parentCIDs: string[] = []): import('./commitGraph').Comp
     isLatest: false,
     isRoot: parentCIDs.length === 0,
     isMerge: parentCIDs.length > 1,
+    parentsInferred: parentCIDs.length > 1,
     identity: null,
   }
 }
