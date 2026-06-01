@@ -321,3 +321,132 @@
   border-color: var(--green-hover);
   color: var(--black);
 }
+
+.btnStop {
+  background: rgba(255, 95, 87, 0.1);
+  color: #FF5F57;
+  border-color: rgba(255, 95, 87, 0.3);
+  min-width: 52px;
+  justify-content: center;
+}
+.btnStop:hover:not(:disabled) {
+  background: rgba(255, 95, 87, 0.18);
+  border-color: rgba(255, 95, 87, 0.5);
+  color: #FF5F57;
+}
+
+/* ── Subscription results ────────────────────────────────────────────────────*/
+.subEventList {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--black);
+  padding: 4px 0 16px;
+}
+
+.subEventItem {
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--dark-border);
+}
+
+.subEventHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.subEventNum {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'CommitMono', monospace;
+  color: var(--defradb);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.subEventTime {
+  font-size: 11px;
+  font-family: 'CommitMono', monospace;
+  color: var(--gray-600);
+}
+
+.subEventBody {
+  margin: 0;
+  font-size: 12px;
+  font-family: 'CommitMono', monospace;
+  color: var(--gray-300);
+  line-height: 1.7;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.subListeningRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: 'CommitMono', monospace;
+}
+
+.subCompleteRow {
+  padding: 12px 16px;
+  font-size: 12px;
+  font-family: 'CommitMono', monospace;
+  color: var(--gray-600);
+}
+
+.subErrorRow {
+  padding: 12px 16px;
+  font-size: 12px;
+  font-family: 'CommitMono', monospace;
+  color: #FF5F57;
+}
+
+.subWaiting {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: 'CommitMono', monospace;
+  background: var(--black);
+}
+
+/* Pulsing live dot */
+.pulseDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--defradb);
+  flex-shrink: 0;
+  animation: subPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes subPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.35; transform: scale(0.8); }
+}
+
+.metaChipLive {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--defradb);
+  background: rgba(16, 203, 255, 0.08);
+}
+
+/* Live dot in tab bar */
+.tabLiveDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--defradb);
+  margin-right: 5px;
+  vertical-align: middle;
+  animation: subPulse 1.4s ease-in-out infinite;
+}

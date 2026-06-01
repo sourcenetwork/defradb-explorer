@@ -106,6 +106,69 @@ export async function patchCollection(config: DefraConfig, sdl: string): Promise
   return typeName ? all.filter(c => c.name === typeName) : []
 }
 
+// ── Subscription executor (SSE) ───────────────────────────────────────────────
+
+export async function* subscribeGraphQL(
+  config: DefraConfig,
+  query: string,
+  variables?: Record<string, unknown>,
+  signal?: AbortSignal,
+): AsyncGenerator<GraphQLResponse> {
+  const url = `${config.baseUrl}/api/v0/graphql`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'text/event-stream',
+  }
+  if (config.token) headers['Authorization'] = `Bearer ${config.token}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+    signal,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => res.statusText)
+    throw new Error(`HTTP ${res.status}: ${body}`)
+  }
+
+  if (!res.body) throw new Error('No response body')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // SSE events are separated by double newlines
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() ?? ''
+
+      for (const part of parts) {
+        if (!part.trim()) continue
+        let eventType = 'next'
+        let data = ''
+        for (const line of part.split('\n')) {
+          if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+          else if (line.startsWith('data: ')) data = line.slice(6).trim()
+        }
+        if (eventType === 'complete') return
+        if (data) {
+          try { yield JSON.parse(data) as GraphQLResponse }
+          catch { /* skip malformed events */ }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 // ── Core executor ────────────────────────────────────────────────────────────
 
 export async function executeGraphQL<T = Record<string, unknown>>(
