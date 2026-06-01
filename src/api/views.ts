@@ -29,9 +29,10 @@ function normalizeViewFromCollection(c: Record<string, unknown>): ViewDescriptio
     ? `type ${c.Name} {\n${userFields.map(f => `  ${f.Name}: String`).join('\n')}\n}`
     : undefined
   return {
-    name:  String(c.Name  ?? ''),
-    query: reconstructQuery(c.Query),
+    name:           String(c.Name ?? ''),
+    query:          reconstructQuery(c.Query),
     sdl,
+    is_materialized: Boolean(c.IsMaterialized),
   }
 }
 
@@ -60,5 +61,11 @@ export async function deleteView(config: DefraConfig, name: string): Promise<voi
   await defraFetch<unknown>(config, '/view', {
     method: 'DELETE',
     body: JSON.stringify({ name }),
+  })
+}
+
+export async function refreshView(config: DefraConfig, name: string): Promise<void> {
+  await defraFetch<unknown>(config, `/view/refresh?name=${encodeURIComponent(name)}`, {
+    method: 'POST',
   })
 }

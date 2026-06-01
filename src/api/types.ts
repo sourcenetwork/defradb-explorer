@@ -37,6 +37,7 @@ export interface ViewDescription {
   name: string
   query: string
   sdl?: string
+  is_materialized?: boolean
 }
 
 // ── GraphQL types ────────────────────────────────────────────────────────────
