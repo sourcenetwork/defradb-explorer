@@ -179,6 +179,25 @@
 }
 .viewSchemaBtn:hover { color: var(--defradb); }
 
+.refreshViewBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid rgba(16, 203, 255, 0.3);
+  border-radius: 5px;
+  color: var(--defradb);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+  flex-shrink: 0;
+}
+.refreshViewBtn:hover { background: rgba(16, 203, 255, 0.08); border-color: rgba(16, 203, 255, 0.5); }
+.refreshViewBtn:disabled { opacity: 0.5; cursor: default; }
+
 /* Toolbar */
 .toolbar {
   display: flex;

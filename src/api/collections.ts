@@ -27,7 +27,7 @@ function normalizeCollection(c: Record<string, unknown>): CollectionDescription 
 export async function fetchCollections(config: DefraConfig): Promise<CollectionDescription[]> {
   const result = await defraFetch<Record<string, unknown>[] | Record<string, unknown>>(config, '/collections')
   const arr = Array.isArray(result) ? result : [result]
-  return arr.map(normalizeCollection)
+  return arr.filter(c => c.Query === null || c.Query === undefined).map(normalizeCollection)
 }
 
 export async function fetchCollectionIndexes(config: DefraConfig, collectionName: string): Promise<CollectionIndex[]> {

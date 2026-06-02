@@ -18,7 +18,7 @@ export function useDocuments(collectionName: string, page: number, search = '', 
   const scalarFields = useMemo(() => {
     if (!schema) return null
     const type = schema.__schema.types.find(t => t.name === collectionName)
-    if (!type?.fields) return ['_docID']
+    if (!type?.fields) return null
     return type.fields
       .filter(f =>
         isScalarField(f.type) &&

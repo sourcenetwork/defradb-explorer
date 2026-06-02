@@ -6,6 +6,7 @@ import type { GraphQLOutputType } from 'graphql'
 import { useDocuments, useDocumentCount, useDocumentAtVersion, useDocumentById } from '../hooks/useDocuments'
 import { buildDocumentsQuery, buildSearchFilter, executeGraphQL } from '../api/graphql'
 import { useCollections } from '../hooks/useCollections'
+import { useViews, useRefreshView } from '../hooks/useViews'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
 import {
   useCreateDocument, useUpdateDocument, useDeleteDocument,
@@ -112,9 +113,10 @@ export interface CollectionBrowserHandle {
 
 const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function CollectionsView({ collection, onViewSchema, onCollectionInvalid, onOpenInQueryRunner }, ref) {
   const { data: collections } = useCollections()
+  const { data: views } = useViews()
   const browserRef = useRef<CollectionBrowserHandle>(null)
 
-  const knownNames = collections ? new Set(collections.map(c => c.name)) : null
+  const knownNames = (collections || views) ? new Set([...(collections ?? []).map(c => c.name), ...(views ?? []).map(v => v.name)]) : null
   const collectionValid = !collection || !knownNames || knownNames.has(collection)
   const effectiveCollection = collectionValid
     ? (collection ?? collections?.[0]?.name ?? null)
@@ -181,7 +183,10 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   }, [searchField])
 
   const { data: collections } = useCollections()
+  const { data: views } = useViews()
   const collectionMeta = collections?.find(c => c.name === collection)
+  const viewMeta = views?.find(v => v.name === collection)
+  const refreshMut = useRefreshView()
 
   // Relation object fields (e.g. "author") need { _docID } sub-selection in GraphQL.
   // Detected via relation_name on the REST collection descriptor, excluding the _id FK scalars.
@@ -253,13 +258,28 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const [schemaFields, setSchemaFields] = useState<string[] | null>(null)
 
   const hasDocID = !schemaFields || schemaFields.includes('_docID')
+
+  const SKIP_FIELDS = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
+  const viewFields = useMemo((): FormField[] => {
+    if (!viewMeta || !gqlSchema) return []
+    const queryType = gqlSchema.getQueryType()
+    if (!queryType) return []
+    const collField = queryType.getFields()[collection]
+    if (!collField) return []
+    const collType = getNamedType(collField.type)
+    if (!('getFields' in collType)) return []
+    return Object.values((collType as { getFields(): Record<string, { name: string; type: GraphQLOutputType }> }).getFields())
+      .filter(f => !f.name.startsWith('_') && !SKIP_FIELDS.has(f.name))
+      .map(f => ({ name: f.name, typeName: getNamedType(f.type).name, required: false }))
+  }, [viewMeta, gqlSchema, collection])
+
   const searchableFields = [
     ...(hasDocID ? [{ name: '_docID', typeName: 'ID' }] : []),
-    // Exclude relation object fields and their _id FK scalars (handled separately below)
-    ...formFields.filter(f => !relationFields.has(f.name) && ![...relationFields].some(r => f.name === `${r}_id`)),
+    // For views use query-type fields; for collections use mutation input fields
+    ...(viewMeta ? viewFields : formFields.filter(f => !relationFields.has(f.name) && ![...relationFields].some(r => f.name === `${r}_id`))),
     // Single relation fields only: search by the related doc's _docID
     // List (many) relations are excluded — filter syntax is unverified for list types
-    ...[...singleRelationFields].map(name => ({ name, typeName: 'ID' })),
+    ...(viewMeta ? [] : [...singleRelationFields].map(name => ({ name, typeName: 'ID' }))),
   ]
 
   const searchFieldType = searchableFields.find(f => f.name === searchField)?.typeName ?? 'String'
@@ -268,12 +288,28 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
 
   // Phase 1: schemaFields=null → fetch everything (let the API return the full field list).
   // Phase 2: schemaFields known → only request visible fields + valid system fields.
-  // This prevents sending _docID to Views that don't have it.
+  // For views, Phase 1 derives fields from the GQL schema to exclude _docID, which
+  // DefraDB's introspection includes but the runtime resolver rejects on non-materialized views.
   const fetchFields = useMemo(() => {
-    if (!schemaFields) return undefined
+    if (!schemaFields) {
+      if (viewMeta && gqlSchema) {
+        const queryType = gqlSchema.getQueryType()
+        const collField = queryType?.getFields()[collection]
+        if (collField) {
+          const collType = getNamedType(collField.type)
+          if ('getFields' in collType) {
+            const SKIP = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
+            const fields = Object.keys((collType as { getFields(): Record<string, unknown> }).getFields())
+              .filter(f => !f.startsWith('_') && !SKIP.has(f))
+            if (fields.length > 0) return fields
+          }
+        }
+      }
+      return undefined
+    }
     const systemFields = ['_docID', '_deleted'].filter(f => schemaFields.includes(f))
     return [...new Set([...systemFields, ...visibleFields])]
-  }, [schemaFields, visibleFields])
+  }, [schemaFields, visibleFields, viewMeta, gqlSchema, collection])
 
   const { data, isLoading, isError, error, refetch } = useDocuments(collection, page, search, searchField, searchFieldType, effectiveOp, pageSize, fetchFields, singleRelationFields)
   const { data: totalCount = 0 } = useDocumentCount(collection, search, searchField, searchFieldType, effectiveOp, relationFields)
@@ -348,7 +384,11 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
         count={totalCount}
         fieldCount={displayFields.length}
         isBranchable={collectionMeta?.is_branchable ?? false}
+        isView={!!viewMeta}
+        isMaterialized={viewMeta?.is_materialized}
         onViewSchema={onViewSchema}
+        onRefreshView={viewMeta?.is_materialized ? () => refreshMut.mutate(collection, { onSuccess: () => refetch() }) : undefined}
+        refreshPending={refreshMut.isPending}
       />
       <Toolbar
         filter={filter}
@@ -528,9 +568,12 @@ function IndexesBar({ collection }: { collection: string }) {
 
 // ── Stats row ─────────────────────────────────────────────────────────────────
 
-function StatsRow({ collection, count, fieldCount, isBranchable, onViewSchema }: {
+function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMaterialized, onViewSchema, onRefreshView, refreshPending }: {
   collection: string; count: number; fieldCount: number; isBranchable?: boolean
+  isView?: boolean; isMaterialized?: boolean
   onViewSchema?: (name: string) => void
+  onRefreshView?: () => void
+  refreshPending?: boolean
 }) {
   return (
     <div className={styles.statsRow}>
@@ -541,6 +584,11 @@ function StatsRow({ collection, count, fieldCount, isBranchable, onViewSchema }:
             <span className={styles.branchBadge} title="This collection tracks verifiable collection-level history">
               <GitBranch size={10} />
               branchable
+            </span>
+          )}
+          {isView && (
+            <span className={styles.branchBadge} title={isMaterialized ? 'Results are pre-computed and cached' : 'Results are computed at query time'}>
+              {isMaterialized ? 'materialized view' : 'view'}
             </span>
           )}
         </div>
@@ -556,12 +604,20 @@ function StatsRow({ collection, count, fieldCount, isBranchable, onViewSchema }:
           </span>
         </div>
       </div>
-      {onViewSchema && (
-        <button className={styles.viewSchemaBtn} onClick={() => onViewSchema(collection)}>
-          View schema
-          <ArrowRight size={10} />
-        </button>
-      )}
+      <div style={{ display: 'flex', gap: 8 }}>
+        {onRefreshView && (
+          <button className={styles.refreshViewBtn} onClick={onRefreshView} disabled={refreshPending}>
+            <RotateCw size={10} />
+            {refreshPending ? 'Refreshing…' : 'Refresh view'}
+          </button>
+        )}
+        {onViewSchema && (
+          <button className={styles.viewSchemaBtn} onClick={() => onViewSchema(collection)}>
+            View schema
+            <ArrowRight size={10} />
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -677,7 +733,7 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
 
   const hiddenCount = allFields.filter(f => !visibleFields.has(f)).length
   const wildcardOp = ['_ilike', '_nilike', '_like', '_nlike'].includes(searchOp)
-  const showWildcardHint = wildcardOp && !filter.includes('%')
+  const showWildcardHint = !!searchField && wildcardOp && !filter.includes('%')
 
   return (
     <div className={styles.toolbar}>
@@ -697,10 +753,11 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
         <div className={styles.searchFieldWrap}>
           <select
             className={`${styles.searchFieldSelect} ${styles.searchOpSelect}`}
-            value={searchOp}
+            value={searchField ? searchOp : ''}
             disabled={!searchField}
             onChange={e => onSearchOpChange(e.target.value)}
           >
+            {!searchField && <option value="">op…</option>}
             {availableOps.map(o => (
               <option key={o} value={o}>{o}</option>
             ))}
