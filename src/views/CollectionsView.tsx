@@ -733,7 +733,7 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
 
   const hiddenCount = allFields.filter(f => !visibleFields.has(f)).length
   const wildcardOp = ['_ilike', '_nilike', '_like', '_nlike'].includes(searchOp)
-  const showWildcardHint = wildcardOp && !filter.includes('%')
+  const showWildcardHint = !!searchField && wildcardOp && !filter.includes('%')
 
   return (
     <div className={styles.toolbar}>
@@ -753,10 +753,11 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
         <div className={styles.searchFieldWrap}>
           <select
             className={`${styles.searchFieldSelect} ${styles.searchOpSelect}`}
-            value={searchOp}
+            value={searchField ? searchOp : ''}
             disabled={!searchField}
             onChange={e => onSearchOpChange(e.target.value)}
           >
+            {!searchField && <option value="">op…</option>}
             {availableOps.map(o => (
               <option key={o} value={o}>{o}</option>
             ))}
