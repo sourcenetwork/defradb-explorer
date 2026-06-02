@@ -36,8 +36,12 @@ function formatType(type: GraphQLOutputType): string {
 
 function scalarPlaceholder(typeName: string): string {
   switch (typeName) {
-    case 'Int': return '0'; case 'Float': return '0.0'
-    case 'Boolean': return 'false'; case 'DateTime': return '"2024-01-01T00:00:00Z"'
+    case 'Int': return '0'
+    case 'Float': case 'Float32': case 'Float64': return '0.0'
+    case 'Boolean': return 'false'
+    case 'DateTime': return '"2024-01-01T00:00:00Z"'
+    case 'JSON': return '"{}"'
+    case 'Blob': return '"ff0099"'
     default: return '""'
   }
 }
@@ -80,8 +84,21 @@ function buildMutationTemplate(field: GraphQLField<unknown, unknown>): string {
   }
   if (argMap.has('input') && argMap.has('filter')) {
     const it = getNamedType(argMap.get('input')!.type)
-    const two = isInputObjectType(it) ? Object.values(it.getFields()).filter(f => !f.name.startsWith('_')).slice(0, 2).map(f => `      ${f.name}: `).join('\n') : ''
+    const two = isInputObjectType(it)
+      ? Object.values(it.getFields()).filter(f => !f.name.startsWith('_')).slice(0, 2)
+          .map(f => { const n = getNamedType(f.type); return `      ${f.name}: ${isScalarType(n) ? scalarPlaceholder(n.name) : '{}'}` }).join('\n')
+      : ''
     return `mutation {\n  ${field.name}(\n    filter: { _docID: { _eq: "" } }\n    input: {\n${two}\n    }\n  ) {\n${sel}\n  }\n}`
+  }
+  if (argMap.has('add')) {
+    const addType = getNamedType(argMap.get('add')!.type)
+    const addFields = isInputObjectType(addType) ? inputFields(addType) : ''
+    const updType = argMap.has('update') ? getNamedType(argMap.get('update')!.type) : null
+    const updateFields = updType && isInputObjectType(updType)
+      ? Object.values(updType.getFields()).filter(f => !f.name.startsWith('_')).slice(0, 2)
+          .map(f => { const n = getNamedType(f.type); return `      ${f.name}: ${isScalarType(n) ? scalarPlaceholder(n.name) : '{}'}` }).join('\n')
+      : ''
+    return `mutation {\n  ${field.name}(\n    filter: { _docID: { _eq: "" } }\n    add: {\n${addFields}\n    }\n    update: {\n${updateFields}\n    }\n  ) {\n${sel}\n  }\n}`
   }
   if (argMap.has('filter') || argMap.has('docID')) {
     return `mutation {\n  ${field.name}(\n    filter: { _docID: { _eq: "" } }\n  ) {\n${sel}\n  }\n}`

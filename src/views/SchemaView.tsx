@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useImperativeHandle, useEffect, useRef, forwardRef } from 'react'
 import { buildClientSchema, printType } from 'graphql'
 import { useIntrospection } from '../hooks/useIntrospection'
+import { useViews } from '../hooks/useViews'
 import type { IntrospectionType, IntrospectionField } from '../api/types'
 import { getBaseKind } from '../api/graphql'
 import ResizeHandle from '../components/ResizeHandle'
@@ -61,18 +62,31 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
     setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR(), sidebarWidth + delta)))
   }, [setSidebarWidth, sidebarWidth])
 
-  const userTypes = useMemo((): IntrospectionType[] => {
+  const { data: views } = useViews()
+
+  const viewNames = useMemo(() => new Set(views?.map(v => v.name) ?? []), [views])
+
+  const collectionTypes = useMemo((): IntrospectionType[] => {
     if (!data) return []
-    return data.__schema.types.filter(
-      t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT',
-    )
-  }, [data])
+    return data.__schema.types
+      .filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT' && !viewNames.has(t.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [data, viewNames])
+
+  const viewTypes = useMemo((): IntrospectionType[] => {
+    if (!data) return []
+    return data.__schema.types
+      .filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT' && viewNames.has(t.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [data, viewNames])
+
+  const userTypes = useMemo(() => [...collectionTypes, ...viewTypes], [collectionTypes, viewTypes])
 
   const enumTypes = useMemo((): IntrospectionType[] => {
     if (!data) return []
-    return data.__schema.types.filter(
-      t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'ENUM',
-    )
+    return data.__schema.types
+      .filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'ENUM')
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [data])
 
   const selected = useMemo(() => {
@@ -190,10 +204,10 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
       ) : (
         <div className={styles.view}>
           <aside className={styles.typeSidebar} style={{ width: sidebarWidth }}>
-            {userTypes.length > 0 && (
+            {collectionTypes.length > 0 && (
               <>
-                <p className={styles.groupLabel}>Types</p>
-                {userTypes.map(t => (
+                <p className={styles.groupLabel}>Collections</p>
+                {collectionTypes.map(t => (
                   <button
                     key={t.name}
                     className={`${styles.typeItem} ${(activeType ?? userTypes[0]?.name) === t.name ? styles.typeActive : ''}`}
@@ -201,6 +215,21 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
                   >
                     <span className={styles.typeItemName}>{t.name}</span>
                     <span className={styles.typeKind}>type</span>
+                  </button>
+                ))}
+              </>
+            )}
+            {viewTypes.length > 0 && (
+              <>
+                <p className={styles.groupLabel} style={{ marginTop: 12 }}>Views</p>
+                {viewTypes.map(t => (
+                  <button
+                    key={t.name}
+                    className={`${styles.typeItem} ${(activeType ?? userTypes[0]?.name) === t.name ? styles.typeActive : ''}`}
+                    onClick={() => setActiveType(t.name)}
+                  >
+                    <span className={styles.typeItemName}>{t.name}</span>
+                    <span className={styles.typeKind}>view</span>
                   </button>
                 ))}
               </>

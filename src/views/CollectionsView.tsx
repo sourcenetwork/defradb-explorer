@@ -11,6 +11,7 @@ import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
 import {
   useCreateDocument, useUpdateDocument, useDeleteDocument,
 } from '../hooks/useDocumentMutations'
+import { validateValues } from '../hooks/useDocumentMutations'
 import type { FormValues, TypeMap } from '../hooks/useDocumentMutations'
 import { useDocumentCommits } from '../hooks/useCommits'
 import { useCollectionIndexes } from '../hooks/useCollectionIndexes'
@@ -508,6 +509,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
         <NewDocModal
           collection={collection}
           formFields={formFields}
+          typeMap={typeMap}
           isPending={createMut.isPending}
           error={createMut.error as Error | null}
           onClose={() => { setShowNewDoc(false); createMut.reset() }}
@@ -1051,6 +1053,8 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   async function saveEdit() {
     try {
       setMutErr(null)
+      const jsonErr = validateValues(editValues, Object.fromEntries(editableFields.map(f => [f.name, f.typeName])))
+      if (jsonErr) { setMutErr(jsonErr); return }
       const source = fullDoc ?? doc
       const original: FormValues = {}
       for (const f of editableFields) {
@@ -1177,10 +1181,10 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
                   ) : (
                     <input
                       className={styles.fieldInput}
-                      type={f.typeName === 'Int' || f.typeName === 'Float' ? 'number' : 'text'}
+                      type={inputTypeFor(f.typeName)}
                       value={editValues[f.name] ?? ''}
-                      onChange={e => setEditValues(p => ({ ...p, [f.name]: e.target.value }))}
-                      placeholder={f.required ? 'required' : 'optional'}
+                      onChange={e => setEditValues(p => ({ ...p, [f.name]: toIso(e.target.value, f.typeName) }))}
+                      placeholder={placeholderFor(f.typeName, f.required)}
                     />
                   )}
                 </div>
@@ -1410,17 +1414,39 @@ function VersionSnapshot({ collection, cid, parentCid, changedFields }: {
   )
 }
 
+// ── Field input helpers ───────────────────────────────────────────────────────
+
+function inputTypeFor(typeName: string): React.HTMLInputTypeAttribute {
+  if (['Int', 'Float', 'Float32', 'Float64'].includes(typeName)) return 'number'
+  if (typeName === 'DateTime') return 'datetime-local'
+  return 'text'
+}
+
+function placeholderFor(typeName: string, required: boolean): string {
+  if (typeName === 'JSON')     return required ? 'required — e.g. {"key": "value"}' : 'e.g. {"key": "value"}'
+  if (typeName === 'Blob')     return required ? 'required — hex string e.g. ff0099' : 'hex string e.g. ff0099'
+  return required ? 'required' : 'optional'
+}
+
+// Convert datetime-local value (YYYY-MM-DDTHH:mm) to ISO 8601 for DefraDB
+function toIso(v: string, typeName: string): string {
+  if (typeName === 'DateTime' && v) return new Date(v).toISOString()
+  return v
+}
+
 // ── New document modal ────────────────────────────────────────────────────────
 
-function NewDocModal({ collection, formFields, isPending, error, onClose, onSubmit }: {
+function NewDocModal({ collection, formFields, typeMap, isPending, error, onClose, onSubmit }: {
   collection: string
   formFields: FormField[]
+  typeMap:    TypeMap
   isPending:  boolean
   error:      Error | null
   onClose:    () => void
   onSubmit:   (values: FormValues) => Promise<void>
 }) {
   const [values, setValues] = useState<FormValues>({})
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   // Fall back to a generic text field if schema hasn't loaded yet
   const fields: FormField[] = formFields.length > 0
@@ -1433,6 +1459,9 @@ function NewDocModal({ collection, formFields, isPending, error, onClose, onSubm
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const err = validateValues(values, typeMap)
+    if (err) { setValidationError(err); return }
+    setValidationError(null)
     await onSubmit(values)
   }
 
@@ -1444,7 +1473,7 @@ function NewDocModal({ collection, formFields, isPending, error, onClose, onSubm
           <button className={styles.modalClose} onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className={styles.modalForm}>
           <div className={styles.modalBody}>
             {fields.map(f => (
               <div key={f.name} className={styles.formGroup}>
@@ -1466,16 +1495,17 @@ function NewDocModal({ collection, formFields, isPending, error, onClose, onSubm
                 ) : (
                   <input
                     className={styles.formInput}
-                    type={f.typeName === 'Int' || f.typeName === 'Float' ? 'number' : 'text'}
+                    type={inputTypeFor(f.typeName)}
                     value={values[f.name] ?? ''}
-                    onChange={e => set(f.name, e.target.value)}
-                    placeholder={f.required ? 'required' : 'optional'}
+                    onChange={e => set(f.name, toIso(e.target.value, f.typeName))}
+                    placeholder={placeholderFor(f.typeName, f.required)}
                     required={f.required}
                   />
                 )}
               </div>
             ))}
 
+            {validationError && <p className={styles.modalError}>{validationError}</p>}
             {error && <p className={styles.modalError}>{error.message}</p>}
           </div>
 

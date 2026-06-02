@@ -3,7 +3,7 @@ import { EditorView, keymap, placeholder, lineNumbers, drawSelection } from '@co
 import { EditorState } from '@codemirror/state'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { autocompletion, closeBrackets } from '@codemirror/autocomplete'
+import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt, updateSchema } from 'cm6-graphql'
 import { parse, print } from 'graphql'
@@ -173,6 +173,7 @@ function GraphQLEditor({ value, onChange, onRun, schema, onCursorOffset }, ref) 
         drawSelection(),
         keymap.of([
           { key: 'Mod-Enter', run: () => { onRunRef.current(); return true } },
+          { key: 'Tab', run: acceptCompletion },
           ...defaultKeymap,
           ...historyKeymap,
           indentWithTab,

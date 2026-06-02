@@ -9,11 +9,23 @@ export type TypeMap   = Record<string, string>
 function serializeVal(value: string, typeName: string): string {
   if (value === '' || value === undefined) return 'null'
   switch (typeName) {
-    case 'Boolean': return value === 'true' ? 'true' : 'false'
-    case 'Int':     return String(parseInt(value, 10))
-    case 'Float':   return String(parseFloat(value))
+    case 'Boolean':                               return value === 'true' ? 'true' : 'false'
+    case 'Int':                                   return String(parseInt(value, 10))
+    case 'Float': case 'Float32': case 'Float64': return String(parseFloat(value))
     default:        return JSON.stringify(value)
   }
+}
+
+export function validateValues(values: FormValues, typeMap: TypeMap): string | null {
+  for (const [key, value] of Object.entries(values)) {
+    if (!value) continue
+    if (typeMap[key] === 'JSON') {
+      try { JSON.parse(value) } catch {
+        return `"${key}" is not valid JSON`
+      }
+    }
+  }
+  return null
 }
 
 function buildObjectLiteral(values: FormValues, typeMap: TypeMap): string {

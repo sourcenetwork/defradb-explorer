@@ -4,7 +4,7 @@ import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view
 import { EditorState } from '@codemirror/state'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { closeBrackets } from '@codemirror/autocomplete'
+import { closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt } from 'cm6-graphql'
 import { useConfig } from '../context/ConfigContext'
@@ -161,7 +161,7 @@ function SDLEditor({ value, onChange, extra = [] }: {
         history(),
         lineNumbers(),
         drawSelection(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([{ key: 'Tab', run: acceptCompletion }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
         graphqlExt(),
         syntaxHighlighting(highlight),
         ...sdlFieldNameHighlighter(),

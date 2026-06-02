@@ -91,6 +91,26 @@ const ALL_DIRECTIVE_NAMES: Completion[] = [
   { label: 'embedding',      detail: 'auto-generate vector field', type: 'keyword', apply: 'embedding' },
 ]
 
+// ── Default arg filter ────────────────────────────────────────────────────────
+
+const TYPE_TO_DEFAULT_PREFIX: Record<string, string[]> = {
+  String:   ['string:'],
+  Int:      ['int:'],
+  Float:    ['float:'],
+  Float32:  ['float32:'],
+  Float64:  ['float64:'],
+  Boolean:  ['bool:'],
+  DateTime: ['dateTime:'],
+  JSON:     ['json:'],
+  Blob:     ['blob:'],
+}
+
+function filterDefaultsByType(fieldType: string, all: Completion[]): Completion[] {
+  const prefixes = TYPE_TO_DEFAULT_PREFIX[fieldType]
+  if (!prefixes) return all
+  return all.filter(c => prefixes.some(p => String(c.apply).startsWith(p)))
+}
+
 // ── Source ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -136,8 +156,17 @@ function sdlDirectiveAndTypeSource(
       const dirMatch = beforeParen.match(/@(\w+)\s*$/)
       if (dirMatch) {
         const dirName = dirMatch[1]
-        const options = DIRECTIVE_COMPLETIONS[dirName]
+        let options = DIRECTIVE_COMPLETIONS[dirName]
         if (options) {
+          // For @default, filter to the arg matching the field's declared type
+          if (dirName === 'default') {
+            const typeMatch = lineText.match(/:\s*\[?(\w+)/)
+            if (typeMatch) {
+              const fieldType = typeMatch[1]
+              const filtered = filterDefaultsByType(fieldType, options)
+              if (filtered.length > 0) options = filtered
+            }
+          }
           const word = ctx.matchBefore(/[\w.:"-]*/)
           return { from: word?.from ?? pos, options }
         }

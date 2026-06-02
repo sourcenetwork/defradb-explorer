@@ -3,7 +3,7 @@ import { EditorView, keymap, lineNumbers, drawSelection, placeholder } from '@co
 import { EditorState } from '@codemirror/state'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { autocompletion, closeBrackets } from '@codemirror/autocomplete'
+import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt } from 'cm6-graphql'
 import { parse as parseGql } from 'graphql'
@@ -76,7 +76,7 @@ function makeEditor(container: HTMLElement, doc: string, ph: string, onChange: (
         syntaxHighlighting(highlight),
         ...sdlFieldNameHighlighter(),
         editorTheme,
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([{ key: 'Tab', run: acceptCompletion }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
         placeholder(ph),
         EditorView.updateListener.of(u => { if (u.docChanged) onChange(u.state.doc.toString()) }),
         EditorView.theme({ '&': { background: 'transparent' } }),
@@ -398,6 +398,11 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
           <div className={styles.editorSection} style={{ flex: 1 }}>
             <div className={styles.editorLabel}>
               Underlying query
+              {mismatches?.inQueryNotSdl.map(n => (
+                <span key={n} className={styles.unusedChip} title="Field fetched by query but not declared in output type">
+                  {n}
+                </span>
+              ))}
               <button className={styles.runQueryBtn} onClick={runTest} disabled={testing || !query.trim()}>
                 {testing ? 'Running…' : '▶ Run'}
               </button>
