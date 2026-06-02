@@ -17,7 +17,10 @@ import { useUIStore } from './store/uiStore'
 import styles from './App.module.css'
 
 export default function App() {
-  const { activeTab, setActiveTab, activeCollection, setActiveCollection } = useUIStore()
+  const activeTab           = useUIStore(s => s.activeTab)
+  const setActiveTab        = useUIStore(s => s.setActiveTab)
+  const activeCollection    = useUIStore(s => s.activeCollection)
+  const setActiveCollection = useUIStore(s => s.setActiveCollection)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mountedTabs, setMountedTabs]   = useState<Set<Tab>>(() => {
     const initial = new Set<Tab>(['dashboard'])

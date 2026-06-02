@@ -310,12 +310,14 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
 
   // ── Layout state ───────────────────────────────────────────────────────────
 
-  const {
-    queryShowSchema: showSchema, setQueryShowSchema: setShowSchema,
-    queryVarsOpen: varsOpen,     setQueryVarsOpen: setVarsOpen,
-    queryVarsHeight: varsHeight, setQueryVarsHeight: setVarsHeight,
-    querySchemaWidth: schemaWidth, setQuerySchemaWidth: setSchemaWidth,
-  } = useUIStore()
+  const showSchema    = useUIStore(s => s.queryShowSchema)
+  const setShowSchema = useUIStore(s => s.setQueryShowSchema)
+  const varsOpen      = useUIStore(s => s.queryVarsOpen)
+  const setVarsOpen   = useUIStore(s => s.setQueryVarsOpen)
+  const varsHeight    = useUIStore(s => s.queryVarsHeight)
+  const setVarsHeight = useUIStore(s => s.setQueryVarsHeight)
+  const schemaWidth   = useUIStore(s => s.querySchemaWidth)
+  const setSchemaWidth = useUIStore(s => s.setQuerySchemaWidth)
   const [editorWidth, setEditorWidth] = useState<number | null>(null)
   const [cursorOffset, setCursorOffset] = useState<number | null>(null)
 

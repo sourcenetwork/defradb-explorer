@@ -41,12 +41,14 @@ const MAX_SIDEBAR  = 480
 const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
   const { data, isLoading, isError } = useIntrospection()
 
-  const {
-    schemaSubView: viewMode, setSchemaSubView: setViewMode,
-    schemaEditorMode: editorMode, setSchemaEditorMode: setEditorMode,
-    selectedSchemaType: activeType, setSelectedSchemaType: setActiveType,
-    schemaSidebarWidth: sidebarWidth, setSchemaSidebarWidth: setSidebarWidth,
-  } = useUIStore()
+  const viewMode       = useUIStore(s => s.schemaSubView)
+  const setViewMode    = useUIStore(s => s.setSchemaSubView)
+  const editorMode     = useUIStore(s => s.schemaEditorMode)
+  const setEditorMode  = useUIStore(s => s.setSchemaEditorMode)
+  const activeType     = useUIStore(s => s.selectedSchemaType)
+  const setActiveType  = useUIStore(s => s.setSelectedSchemaType)
+  const sidebarWidth   = useUIStore(s => s.schemaSidebarWidth)
+  const setSidebarWidth = useUIStore(s => s.setSchemaSidebarWidth)
 
   useImperativeHandle(ref, () => ({
     openCreate:     () => { setEditorMode('create'); setViewMode('editor') },

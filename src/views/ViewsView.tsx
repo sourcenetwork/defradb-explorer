@@ -154,8 +154,17 @@ const MIN_SDL_H   = 80
 const DEFAULT_SDL_H = 220
 
 export function CreateViewForm({ onDone }: { onDone: () => void }) {
-  const [sdl, setSdl]           = useState('')
-  const [query, setQuery]       = useState('')
+  const viewDraftSdl       = useUIStore(s => s.viewDraftSdl)
+  const setViewDraftSdl    = useUIStore(s => s.setViewDraftSdl)
+  const viewDraftQuery     = useUIStore(s => s.viewDraftQuery)
+  const setViewDraftQuery  = useUIStore(s => s.setViewDraftQuery)
+  const viewGuideWidth     = useUIStore(s => s.viewGuideWidth)
+  const setViewGuideWidth  = useUIStore(s => s.setViewGuideWidth)
+
+  const [sdl, setSdlRaw]        = useState(viewDraftSdl)
+  const [query, setQueryRaw]    = useState(viewDraftQuery)
+  const setSdl   = useCallback((v: string) => { setSdlRaw(v);   setViewDraftSdl(v)   }, [setViewDraftSdl])
+  const setQuery = useCallback((v: string) => { setQueryRaw(v); setViewDraftQuery(v) }, [setViewDraftQuery])
   const [error, setError]       = useState<string | null>(null)
   const [result, setResult]     = useState<ViewDescription[] | null>(null)
   const [testResult, setTestResult] = useState<string | null>(null)
@@ -174,7 +183,6 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const { data: collections } = useCollections()
   const { data: introspection } = useIntrospection()
   const schema = useGraphQLSchema()
-  const { viewGuideWidth, setViewGuideWidth } = useUIStore()
 
   // Keep refs up-to-date so closures in effects always read current values
   const schemaRef = useRef(schema)
@@ -203,14 +211,14 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     if (!sdlRef.current || !queryRef.current) return
-    const sv = makeEditor(sdlRef.current, '', SDL_PLACEHOLDER, setSdl, [
+    const sv = makeEditor(sdlRef.current, sdl, SDL_PLACEHOLDER, setSdl, [
       graphqlExt(),
       autocompletion({ override: [
         sdlDirectiveAndTypeCompletionSource(() => sdlTypeNamesRef.current),
         sdlFieldSource(() => sdlFieldsRef.current),
       ]}),
     ])
-    const qv = makeEditor(queryRef.current, '', QUERY_PLACEHOLDER, setQuery, [
+    const qv = makeEditor(queryRef.current, query, QUERY_PLACEHOLDER, setQuery, [
       graphqlExt(schemaRef.current ?? undefined),
     ])
     sdlViewRef.current = sv
@@ -276,6 +284,8 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
     try {
       const views = await mutateAsync({ query: stripBraces(query), sdl: sdl.trim() })
       setResult(views)
+      setViewDraftSdl('')
+      setViewDraftQuery('')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -629,7 +639,8 @@ const ViewsView = forwardRef<ViewsViewHandle>(function ViewsView(_, ref) {
   const { data: views = [], isLoading } = useViews()
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const [showCreate, setShowCreate]     = useState(false)
-  const { viewsSidebarWidth: sidebarWidth, setViewsSidebarWidth: setSidebarWidth } = useUIStore()
+  const sidebarWidth    = useUIStore(s => s.viewsSidebarWidth)
+  const setSidebarWidth = useUIStore(s => s.setViewsSidebarWidth)
 
   useImperativeHandle(ref, () => ({
     openCreate: () => setShowCreate(true),

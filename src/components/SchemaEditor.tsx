@@ -229,13 +229,27 @@ const MAX_GUIDE  = 600
 export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) {
   const { config }    = useConfig()
   const queryClient   = useQueryClient()
-  const { schemaEditorMode: storeMode, schemaGuideWidth, setSchemaGuideWidth } = useUIStore()
+  const storeMode                  = useUIStore(s => s.schemaEditorMode)
+  const schemaGuideWidth           = useUIStore(s => s.schemaGuideWidth)
+  const setSchemaGuideWidth        = useUIStore(s => s.setSchemaGuideWidth)
+  const schemaEditorDraftCreate    = useUIStore(s => s.schemaEditorDraftCreate)
+  const setSchemaEditorDraftCreate = useUIStore(s => s.setSchemaEditorDraftCreate)
+  const schemaEditorDraftPatch     = useUIStore(s => s.schemaEditorDraftPatch)
+  const setSchemaEditorDraftPatch  = useUIStore(s => s.setSchemaEditorDraftPatch)
   const { data: introspection } = useIntrospection()
   const { data: collections }   = useCollections()
 
   // Honour initialMode on first mount; thereafter track store
   const [mode, setMode] = useState<'create' | 'patch'>(initialMode)
-  const [sdl, setSdl]   = useState(initialMode === 'patch' ? PATCH_TEMPLATE : CREATE_TEMPLATE)
+  const initialDraft = initialMode === 'patch'
+    ? (schemaEditorDraftPatch  || PATCH_TEMPLATE)
+    : (schemaEditorDraftCreate || CREATE_TEMPLATE)
+  const [sdl, setSdlRaw] = useState(initialDraft)
+  const setSdl = useCallback((v: string) => {
+    setSdlRaw(v)
+    if (mode === 'patch') setSchemaEditorDraftPatch(v)
+    else setSchemaEditorDraftCreate(v)
+  }, [mode, setSchemaEditorDraftCreate, setSchemaEditorDraftPatch])
   const [result, setResult] = useState<CollectionDescription[] | null>(null)
 
   // Live patch preview — derived from sdl whenever in patch mode
@@ -265,7 +279,9 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
   useEffect(() => {
     if (storeMode !== mode) {
       setMode(storeMode)
-      setSdl(storeMode === 'patch' ? PATCH_TEMPLATE : CREATE_TEMPLATE)
+      setSdlRaw(storeMode === 'patch'
+        ? (schemaEditorDraftPatch  || PATCH_TEMPLATE)
+        : (schemaEditorDraftCreate || CREATE_TEMPLATE))
       setResult(null)
     }
   }, [storeMode]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -284,6 +300,8 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
     },
     onSuccess: data => {
       setResult(data)
+      if (mode === 'patch') setSchemaEditorDraftPatch('')
+      else setSchemaEditorDraftCreate('')
       queryClient.invalidateQueries({ queryKey: queryKeys.introspection(config.baseUrl) })
       queryClient.invalidateQueries({ queryKey: queryKeys.collections(config.baseUrl) })
     },

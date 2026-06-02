@@ -51,6 +51,16 @@ interface UIState {
   setViewGuideWidth: (w: number) => void
   viewsSidebarWidth: number
   setViewsSidebarWidth: (w: number) => void
+
+  // Draft inputs — persisted so navigating away doesn't lose work
+  viewDraftSdl: string
+  setViewDraftSdl: (v: string) => void
+  viewDraftQuery: string
+  setViewDraftQuery: (v: string) => void
+  schemaEditorDraftCreate: string
+  setSchemaEditorDraftCreate: (v: string) => void
+  schemaEditorDraftPatch: string
+  setSchemaEditorDraftPatch: (v: string) => void
 }
 
 const VALID_TABS = new Set<Tab>(['dashboard', 'collections', 'query', 'schema', 'peers', 'commits'])
@@ -97,6 +107,15 @@ export const useUIStore = create<UIState>()(
       setViewGuideWidth: (w) => set({ viewGuideWidth: w }),
       viewsSidebarWidth: 220,
       setViewsSidebarWidth: (w) => set({ viewsSidebarWidth: w }),
+
+      viewDraftSdl: '',
+      setViewDraftSdl: (v) => set({ viewDraftSdl: v }),
+      viewDraftQuery: '',
+      setViewDraftQuery: (v) => set({ viewDraftQuery: v }),
+      schemaEditorDraftCreate: '',
+      setSchemaEditorDraftCreate: (v) => set({ schemaEditorDraftCreate: v }),
+      schemaEditorDraftPatch: '',
+      setSchemaEditorDraftPatch: (v) => set({ schemaEditorDraftPatch: v }),
     }),
     {
       name: 'defradb:ui',
@@ -113,10 +132,14 @@ export const useUIStore = create<UIState>()(
         queryVarsOpen:       state.queryVarsOpen,
         queryVarsHeight:     state.queryVarsHeight,
         querySchemaWidth:    state.querySchemaWidth,
-        schemaGuideWidth:    state.schemaGuideWidth,
-        schemaSidebarWidth:  state.schemaSidebarWidth,
-        viewGuideWidth:      state.viewGuideWidth,
-        viewsSidebarWidth:   state.viewsSidebarWidth,
+        schemaGuideWidth:         state.schemaGuideWidth,
+        schemaSidebarWidth:       state.schemaSidebarWidth,
+        viewGuideWidth:           state.viewGuideWidth,
+        viewsSidebarWidth:        state.viewsSidebarWidth,
+        viewDraftSdl:             state.viewDraftSdl,
+        viewDraftQuery:           state.viewDraftQuery,
+        schemaEditorDraftCreate:  state.schemaEditorDraftCreate,
+        schemaEditorDraftPatch:   state.schemaEditorDraftPatch,
       }),
     },
   ),

@@ -159,7 +159,8 @@ export default CollectionsView
 // ── Browser ───────────────────────────────────────────────────────────────────
 
 const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: string; onViewSchema?: (name: string) => void; onOpenInQueryRunner?: (query: string) => void }>(function CollectionBrowser({ collection, onViewSchema, onOpenInQueryRunner }, ref) {
-  const { collectionsPageSize: pageSize, setCollectionsPageSize: setPageSize } = useUIStore()
+  const pageSize    = useUIStore(s => s.collectionsPageSize)
+  const setPageSize = useUIStore(s => s.setCollectionsPageSize)
   const [page, setPage]           = useState(1)
   const [filter, setFilter]       = useState('')
   const [searchField, setSearchField] = useState('_docID')
