@@ -5,7 +5,8 @@ import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
-import { graphql as graphqlExt, updateSchema } from 'cm6-graphql'
+import { graphql as graphqlExt } from 'cm6-graphql'
+import GraphQLEditor from '../components/GraphQLEditor'
 import { useViews, useCreateView, useDeleteView } from '../hooks/useViews'
 import { useCollections } from '../hooks/useCollections'
 import { useDocuments, PAGE_SIZE } from '../hooks/useDocuments'
@@ -172,9 +173,8 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const [testing, setTesting]       = useState(false)
   const [sdlHeight, setSdlHeight]   = useState(DEFAULT_SDL_H)
   const sdlRef         = useRef<HTMLDivElement>(null)
-  const queryRef       = useRef<HTMLDivElement>(null)
+
   const sdlViewRef     = useRef<EditorView | null>(null)
-  const qryViewRef     = useRef<EditorView | null>(null)
   const sdlFieldsRef   = useRef<{ name: string; typeName: string }[]>([])
   const sdlTypeNamesRef = useRef<string[]>([])
 
@@ -185,8 +185,6 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const schema = useGraphQLSchema()
 
   // Keep refs up-to-date so closures in effects always read current values
-  const schemaRef = useRef(schema)
-  schemaRef.current = schema
   const viewGuideWidthRef = useRef(viewGuideWidth)
   viewGuideWidthRef.current = viewGuideWidth
 
@@ -210,7 +208,7 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   }, [introspection])
 
   useEffect(() => {
-    if (!sdlRef.current || !queryRef.current) return
+    if (!sdlRef.current) return
     const sv = makeEditor(sdlRef.current, sdl, SDL_PLACEHOLDER, setSdl, [
       graphqlExt(),
       autocompletion({ override: [
@@ -218,27 +216,16 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
         sdlFieldSource(() => sdlFieldsRef.current),
       ]}),
     ])
-    const qv = makeEditor(queryRef.current, query, QUERY_PLACEHOLDER, setQuery, [
-      graphqlExt(schemaRef.current ?? undefined),
-    ])
     sdlViewRef.current = sv
-    qryViewRef.current = qv
-    return () => { sv.destroy(); qv.destroy() }
+    return () => { sv.destroy() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Push updated schema into the query editor when it loads/changes
-  useEffect(() => {
-    if (qryViewRef.current && schema) updateSchema(qryViewRef.current, schema)
-  }, [schema])
 
   function fillFromCollection(name: string) {
     const sdlText   = `type ${name}View {\n  \n}`
     const queryText = `{\n  ${name} {\n    \n  }\n}`
-    function replaceDoc(view: EditorView, text: string) {
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } })
+    if (sdlViewRef.current) {
+      sdlViewRef.current.dispatch({ changes: { from: 0, to: sdlViewRef.current.state.doc.length, insert: sdlText } })
     }
-    if (sdlViewRef.current)  replaceDoc(sdlViewRef.current,  sdlText)
-    if (qryViewRef.current)  replaceDoc(qryViewRef.current,  queryText)
     setSdl(sdlText)
     setQuery(queryText)
 
@@ -344,7 +331,9 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
                 {testing ? 'Running…' : '▶ Run'}
               </button>
             </div>
-            <div className={styles.editorBox} ref={queryRef} style={{ flex: testResult || testError ? '0 0 50%' : 1 }} />
+            <div className={styles.editorBox} style={{ flex: testResult || testError ? '0 0 50%' : 1 }}>
+              <GraphQLEditor value={query} onChange={setQuery} onRun={runTest} schema={schema} />
+            </div>
             {(testResult || testError) && (
               <div className={`${styles.testResultPane} ${testError ? styles.testResultError : ''}`}>
                 <div className={styles.testResultHeader}>

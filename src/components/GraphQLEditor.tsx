@@ -181,7 +181,15 @@ function GraphQLEditor({ value, onChange, onRun, schema, onCursorOffset }, ref) 
         graphqlExt(),
         syntaxHighlighting(graphqlHighlight),
         ...gqlRootFieldHighlighter(),
-        autocompletion(),
+        autocompletion({
+          compareCompletions: (a, b) => {
+            const AGG = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
+            const rank = (l: string) => AGG.has(l) ? 1 : 0
+            const diff = rank(a.label) - rank(b.label)
+            if (diff !== 0) return diff
+            return a.label < b.label ? -1 : a.label > b.label ? 1 : 0
+          },
+        }),
         closeBrackets(),
         dashboardTheme,
         EditorView.updateListener.of(update => {
