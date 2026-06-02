@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, forwardRef, useImperativeHandle, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useConfig } from '../context/ConfigContext'
-import { executeGraphQL } from '../api/graphql'
+import { executeGraphQL, subscribeGraphQL } from '../api/graphql'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
 import { useCollections } from '../hooks/useCollections'
 import type { GraphQLResponse } from '../api/types'
@@ -26,6 +26,14 @@ export interface QueryViewProps {
 
 // ── Tab model ─────────────────────────────────────────────────────────────────
 
+interface SubscriptionEvent {
+  index: number
+  timestamp: string
+  data: GraphQLResponse
+}
+
+type SubStatus = 'idle' | 'listening' | 'complete' | 'error'
+
 interface QueryTab {
   id: string
   name: string
@@ -33,6 +41,8 @@ interface QueryTab {
   variables: string
   result: GraphQLResponse | null
   elapsed: number | null
+  subEvents: SubscriptionEvent[]
+  subStatus: SubStatus
 }
 
 const DEFAULT_QUERY = `{
@@ -102,7 +112,13 @@ function makeTab(index: number, query = DEFAULT_QUERY): QueryTab {
     variables: '',
     result: null,
     elapsed: null,
+    subEvents: [],
+    subStatus: 'idle',
   }
+}
+
+function isSubscriptionQuery(query: string): boolean {
+  return /^\s*subscription\b/i.test(query.trim())
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -149,12 +165,58 @@ function extractResultDocs(result: GraphQLResponse | null, knownCollections: Set
   return out
 }
 
+// ── Subscription event list ───────────────────────────────────────────────────
+
+function SubscriptionResults({ events, status }: { events: SubscriptionEvent[]; status: SubStatus }) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [events.length])
+
+  if (status !== 'complete' && events.length === 0) {
+    return (
+      <div className={styles.subWaiting}>
+        <span className={styles.pulseDot} />
+        Waiting for events…
+      </div>
+    )
+  }
+
+  return (
+    <div className={styles.subEventList}>
+      {events.map(evt => (
+        <div key={evt.index} className={styles.subEventItem}>
+          <div className={styles.subEventHeader}>
+            <span className={styles.subEventNum}>Event {evt.index}</span>
+            <span className={styles.subEventTime}>{evt.timestamp}</span>
+          </div>
+          <pre className={styles.subEventBody}>{JSON.stringify(evt.data, null, 2)}</pre>
+        </div>
+      ))}
+      {status === 'listening' && (
+        <div className={styles.subListeningRow}>
+          <span className={styles.pulseDot} />
+          <span>Listening…</span>
+        </div>
+      )}
+      {status === 'complete' && events.length > 0 && (
+        <div className={styles.subCompleteRow}>Subscription complete</div>
+      )}
+      {status === 'error' && (
+        <div className={styles.subErrorRow}>Subscription error</div>
+      )}
+      <div ref={bottomRef} />
+    </div>
+  )
+}
+
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const MIN_PANEL      = 180
-const MIN_SCHEMA     = 240
-const MIN_RESULTS    = 220
-const MIN_VARS       = 60
+const MIN_PANEL   = 180
+const MIN_SCHEMA  = 240
+const MIN_RESULTS = 220
+const MIN_VARS    = 60
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -165,12 +227,20 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   const { data: collections } = useCollections()
   const knownCollections = useMemo(() => new Set(collections?.map(c => c.name) ?? []), [collections])
 
+  // ── Subscription abort map ─────────────────────────────────────────────────
+
+  const abortMapRef = useRef(new Map<string, AbortController>())
+
+  useEffect(() => {
+    return () => { abortMapRef.current.forEach(c => c.abort()) }
+  }, [])
+
   // ── Tab state ──────────────────────────────────────────────────────────────
 
   const [tabs, setTabsRaw] = useState<QueryTab[]>(() => {
     const saved = loadSaved()
     if (saved?.tabs?.length) {
-      return saved.tabs.map(t => ({ ...t, result: null, elapsed: null }))
+      return saved.tabs.map(t => ({ ...t, result: null, elapsed: null, subEvents: [], subStatus: 'idle' as SubStatus }))
     }
     return [makeTab(1)]
   })
@@ -227,6 +297,8 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
 
   function closeTab(id: string) {
     if (tabs.length <= 1) return
+    abortMapRef.current.get(id)?.abort()
+    abortMapRef.current.delete(id)
     const idx = tabs.findIndex(t => t.id === id)
     const next = tabs.filter(t => t.id !== id)
     setTabs(next)
@@ -286,12 +358,88 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
       return { res, elapsed: Math.round(performance.now() - t0) }
     },
     onSuccess: ({ res, elapsed }) => {
-      setTabs(prev => prev.map(t => t.id === activeTab.id ? { ...t, result: res, elapsed } : t))
+      setTabs(prev => prev.map(t => t.id === activeTab.id
+        ? { ...t, result: res, elapsed, subEvents: [], subStatus: 'idle' }
+        : t
+      ))
     },
   })
 
+  // ── Subscription execution ─────────────────────────────────────────────────
+
+  async function runSubscription(query: string) {
+    const tabId = activeTab.id
+
+    abortMapRef.current.get(tabId)?.abort()
+    const controller = new AbortController()
+    abortMapRef.current.set(tabId, controller)
+
+    let vars: Record<string, unknown> | undefined
+    if (activeTab.variables.trim()) {
+      try { vars = JSON.parse(activeTab.variables) }
+      catch {
+        setTabs(prev => prev.map(t => t.id === tabId
+          ? { ...t, result: { errors: [{ message: 'Invalid JSON in variables' }] }, subStatus: 'idle' }
+          : t
+        ))
+        return
+      }
+    }
+
+    setTabs(prev => prev.map(t => t.id === tabId
+      ? { ...t, result: null, elapsed: null, subEvents: [], subStatus: 'listening' }
+      : t
+    ))
+
+    let index = 0
+    try {
+      for await (const event of subscribeGraphQL(config, query, vars, controller.signal)) {
+        if (controller.signal.aborted) break
+        const timestamp = new Date().toLocaleTimeString([], {
+          hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+        })
+        index++
+        setTabs(prev => prev.map(t => t.id === tabId
+          ? { ...t, subEvents: [...t.subEvents, { index, timestamp, data: event }] }
+          : t
+        ))
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, subStatus: 'complete' } : t))
+        abortMapRef.current.delete(tabId)
+        return
+      }
+      setTabs(prev => prev.map(t => t.id === tabId
+        ? { ...t, subStatus: 'error', subEvents: [...t.subEvents, { index: index + 1, timestamp: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }), data: { errors: [{ message: (err as Error).message }] } }] }
+        : t
+      ))
+      abortMapRef.current.delete(tabId)
+      return
+    }
+
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, subStatus: 'complete' } : t))
+    abortMapRef.current.delete(tabId)
+  }
+
+  function stopSubscription() {
+    abortMapRef.current.get(activeTab.id)?.abort()
+  }
+
+  function handleRun() {
+    if (isSubscriptionQuery(activeTab.query)) {
+      runSubscription(activeTab.query).catch(console.error)
+    } else {
+      runQuery(activeTab.query)
+    }
+  }
+
+  // ── Derived state ──────────────────────────────────────────────────────────
+
   const result  = activeTab.result
   const elapsed = activeTab.elapsed
+  const isSubscribing = activeTab.subStatus === 'listening'
+  const isSubMode     = activeTab.subStatus !== 'idle'
 
   const docCount = result?.data
     ? Object.values(result.data).find(Array.isArray)?.length ?? null
@@ -332,6 +480,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
               className={`${styles.tab} ${tab.id === activeTabId ? styles.tabActive : ''}`}
             >
               <button className={styles.tabLabel} onClick={() => setActiveTabId(tab.id)}>
+                {tab.subStatus === 'listening' && <span className={styles.tabLiveDot} />}
                 {tab.name}
               </button>
               {tabs.length > 1 && (
@@ -368,13 +517,22 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
             >
               Schema
             </button>
-            <button
-              className={`${styles.btnSm} ${styles.btnPrimary}`}
-              onClick={() => runQuery(activeTab.query)}
-              disabled={isPending}
-            >
-              {isPending ? '…' : '▶ Run'}
-            </button>
+            {isSubscribing ? (
+              <button
+                className={`${styles.btnSm} ${styles.btnStop}`}
+                onClick={stopSubscription}
+              >
+                ■ Stop
+              </button>
+            ) : (
+              <button
+                className={`${styles.btnSm} ${styles.btnPrimary}`}
+                onClick={handleRun}
+                disabled={isPending}
+              >
+                {isPending ? '…' : '▶ Run'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -385,7 +543,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
             ref={editorRef}
             value={activeTab.query}
             onChange={setQuery}
-            onRun={() => runQuery(activeTab.query)}
+            onRun={handleRun}
             schema={schema}
             onCursorOffset={setCursorOffset}
           />
@@ -435,8 +593,9 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
           <div className={styles.panelHeader}>
             <span className={styles.panelLabel}>Response</span>
             <div className={styles.resultsMeta}>
-              {isPending && <span className={styles.running}>Running…</span>}
-              {!isPending && result && !result.errors && (
+              {/* Regular query status */}
+              {!isSubMode && isPending && <span className={styles.running}>Running…</span>}
+              {!isSubMode && !isPending && result && !result.errors && (
                 <>
                   {docCount !== null && (
                     <span className={styles.metaChip}>{docCount} doc{docCount !== 1 ? 's' : ''}</span>
@@ -446,26 +605,55 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
                   )}
                 </>
               )}
-              {!isPending && result?.errors && (
+              {!isSubMode && !isPending && result?.errors && (
                 <span className={`${styles.metaChip} ${styles.metaChipErr}`}>
                   {result.errors.length} error{result.errors.length > 1 ? 's' : ''}
                 </span>
               )}
-              {isError && (
+              {!isSubMode && isError && (
                 <span className={`${styles.metaChip} ${styles.metaChipErr}`}>
                   {(error as Error).message}
                 </span>
               )}
+              {/* Subscription status */}
+              {isSubMode && (
+                <>
+                  {isSubscribing && (
+                    <span className={`${styles.metaChip} ${styles.metaChipLive}`}>
+                      <span className={styles.pulseDot} />
+                      Listening
+                    </span>
+                  )}
+                  {activeTab.subEvents.length > 0 && (
+                    <span className={styles.metaChip}>
+                      {activeTab.subEvents.length} event{activeTab.subEvents.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {activeTab.subStatus === 'complete' && (
+                    <span className={`${styles.metaChip} ${styles.metaChipCyan}`}>complete</span>
+                  )}
+                  {activeTab.subStatus === 'error' && (
+                    <span className={`${styles.metaChip} ${styles.metaChipErr}`}>error</span>
+                  )}
+                </>
+              )}
             </div>
             <button className={styles.btnSm} onClick={() => {
-              setTabs(prev => prev.map(t => t.id === activeTab.id ? { ...t, result: null, elapsed: null } : t))
+              abortMapRef.current.get(activeTab.id)?.abort()
+              abortMapRef.current.delete(activeTab.id)
+              setTabs(prev => prev.map(t => t.id === activeTab.id
+                ? { ...t, result: null, elapsed: null, subEvents: [], subStatus: 'idle' }
+                : t
+              ))
             }}>
               Clear
             </button>
           </div>
 
           <div className={styles.resultArea}>
-            {result ? (
+            {isSubMode ? (
+              <SubscriptionResults events={activeTab.subEvents} status={activeTab.subStatus} />
+            ) : result ? (
               <JsonViewer
                 value={resultText}
                 isError={hasError}

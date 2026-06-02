@@ -221,8 +221,9 @@
   word-break: break-all;
 }
 
-.nameQuery    { color: var(--defradb); }
-.nameMutation { color: #e0a96d; }
+.nameQuery        { color: var(--defradb); }
+.nameMutation     { color: #e0a96d; }
+.nameSubscription { color: #a78bfa; }
 
 .detailReturnType {
   font-family: 'CommitMono', monospace;

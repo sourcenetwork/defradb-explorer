@@ -64,6 +64,12 @@ function buildQueryTemplate(field: GraphQLField<unknown, unknown>): string {
   return `{\n  ${field.name}${field.args.some(a => a.name === 'limit') ? '(limit: 10)' : ''} {\n${sel}\n  }\n}`
 }
 
+function buildSubscriptionTemplate(field: GraphQLField<unknown, unknown>): string {
+  const named = getNamedType(field.type)
+  const sel = isObjectType(named) ? selectionSet(named) : '    _docID'
+  return `subscription {\n  ${field.name}${field.args.some(a => a.name === 'docID') ? '(docID: [""])' : ''} {\n${sel}\n  }\n}`
+}
+
 function buildMutationTemplate(field: GraphQLField<unknown, unknown>): string {
   const argMap = new Map(field.args.map(a => [a.name, a]))
   const named  = getNamedType(field.type)
@@ -87,9 +93,9 @@ function buildMutationTemplate(field: GraphQLField<unknown, unknown>): string {
 
 type NavPage =
   | { kind: 'root' }
-  | { kind: 'opList'; opKind: 'query' | 'mutation' }
+  | { kind: 'opList'; opKind: 'query' | 'mutation' | 'subscription' }
   | { kind: 'typeList' }
-  | { kind: 'operation'; opKind: 'query' | 'mutation'; field: GraphQLField<unknown, unknown> }
+  | { kind: 'operation'; opKind: 'query' | 'mutation' | 'subscription'; field: GraphQLField<unknown, unknown> }
   | { kind: 'type'; typeName: string; objectStart?: number }
   | { kind: 'field'; parentTypeName: string; fieldName: string }
 
@@ -171,7 +177,7 @@ function OperationPage({
   field, opKind, schema, query, onInsert, onQueryChange, onNavigateType, onNavigateField,
 }: {
   field: GraphQLField<unknown, unknown>
-  opKind: 'query' | 'mutation'
+  opKind: 'query' | 'mutation' | 'subscription'
   schema: GraphQLSchema
   query: string
   onInsert: (t: string) => void
@@ -179,17 +185,24 @@ function OperationPage({
   onNavigateType: (name: string) => void
   onNavigateField: (typeName: string, fieldName: string) => void
 }) {
-  const template    = opKind === 'query' ? buildQueryTemplate(field) : buildMutationTemplate(field)
+  const template    = opKind === 'query'
+    ? buildQueryTemplate(field)
+    : opKind === 'subscription'
+      ? buildSubscriptionTemplate(field)
+      : buildMutationTemplate(field)
   const returnType  = getNamedType(field.type)
   const returnFields = isObjectType(returnType)
     ? Object.values(returnType.getFields()).filter(f => !AGGREGATE_NAMES.has(f.name))
     : []
-  const inQuery     = isRootFieldInQuery(query, field.name)
+  const isSubscription = opKind === 'subscription'
+  const inQuery     = !isSubscription && isRootFieldInQuery(query, field.name)
   const selected    = getSelectedFieldsForType(query, returnType.name, schema)
   const activeArgs  = getArgsForRootField(query, field.name)
   const visibleArgs = field.args.filter(a => !a.name.startsWith('_'))
 
   const returnTypeNavigable = !HIDDEN_TYPES.has(returnType.name) && isObjectType(returnType)
+
+  const nameColor = opKind === 'query' ? styles.nameQuery : opKind === 'subscription' ? styles.nameSubscription : styles.nameMutation
 
   return (
     <div className={styles.detailPage}>
@@ -199,7 +212,7 @@ function OperationPage({
           {false ? <AddedIcon /> : <AddIcon />}
         </button>
         <div className={styles.detailTitleContent}>
-          <span className={`${styles.detailName} ${opKind === 'query' ? styles.nameQuery : styles.nameMutation}`}>
+          <span className={`${styles.detailName} ${nameColor}`}>
             {field.name}:
           </span>
           {' '}
@@ -563,12 +576,14 @@ function RootPage({ schema, onNavigate }: {
   schema: GraphQLSchema
   onNavigate: (page: NavPage) => void
 }) {
-  const queryType    = schema.getQueryType()
-  const mutationType = schema.getMutationType()
-  const typeMap      = schema.getTypeMap()
+  const queryType        = schema.getQueryType()
+  const mutationType     = schema.getMutationType()
+  const subscriptionType = schema.getSubscriptionType()
+  const typeMap          = schema.getTypeMap()
 
   const queryCount = queryType ? Object.values(queryType.getFields()).filter(f => f.name !== '_').length : 0
   const mutCount   = mutationType ? Object.values(mutationType.getFields()).filter(f => f.name !== '_').length : 0
+  const subCount   = subscriptionType ? Object.values(subscriptionType.getFields()).filter(f => f.name !== '_').length : 0
   const typeCount  = Object.values(typeMap).filter(t => isObjectType(t) && !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_')).length
 
   return (
@@ -580,6 +595,10 @@ function RootPage({ schema, onNavigate }: {
       {mutCount > 0 && (
         <RootRow name="Mutation" badge={`${mutCount}`} accent="#e0a96d"
           onNavigate={() => onNavigate({ kind: 'opList', opKind: 'mutation' })} />
+      )}
+      {subCount > 0 && (
+        <RootRow name="Subscription" badge={`${subCount}`} accent="#a78bfa"
+          onNavigate={() => onNavigate({ kind: 'opList', opKind: 'subscription' })} />
       )}
       {typeCount > 0 && (
         <RootRow name="Types" badge={`${typeCount}`}
@@ -593,13 +612,17 @@ function RootPage({ schema, onNavigate }: {
 
 function OpListPage({ schema, opKind, onNavigate }: {
   schema: GraphQLSchema
-  opKind: 'query' | 'mutation'
+  opKind: 'query' | 'mutation' | 'subscription'
   onNavigate: (page: NavPage) => void
 }) {
   const [search, setSearch] = useState('')
   const q = search.toLowerCase()
 
-  const rootType = opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
+  const rootType = opKind === 'query'
+    ? schema.getQueryType()
+    : opKind === 'subscription'
+      ? schema.getSubscriptionType()
+      : schema.getMutationType()
   const allFields = useMemo(
     () => rootType ? Object.values(rootType.getFields()).filter(f => f.name !== '_') : [],
     [rootType],
@@ -745,7 +768,7 @@ function SystemGroup({ fields, onNavigate }: { fields: GraphQLField<unknown,unkn
 
 function pageLabel(p: NavPage): string {
   if (p.kind === 'root')      return 'Root'
-  if (p.kind === 'opList')    return p.opKind === 'query' ? 'Query' : 'Mutation'
+  if (p.kind === 'opList')    return p.opKind === 'query' ? 'Query' : p.opKind === 'subscription' ? 'Subscription' : 'Mutation'
   if (p.kind === 'typeList')  return 'Types'
   if (p.kind === 'operation') return p.field.name
   if (p.kind === 'type')      return p.typeName
