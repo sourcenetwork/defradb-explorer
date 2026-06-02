@@ -1611,6 +1611,14 @@
 
 .modalClose:hover { color: var(--white); background: var(--surface-lift); }
 
+.modalForm {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
 .modalBody {
   flex: 1;
   overflow-y: auto;
@@ -1618,6 +1626,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
 }
 
 .modalFooter {
@@ -1680,3 +1689,33 @@
 
 .formInput:focus { border-color: var(--defradb); }
 .formInput::placeholder { color: var(--gray-600); }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  background: var(--surface);
+  border: 1px solid var(--green);
+  color: var(--green-btn);
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 1000;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  animation: toastIn 0.18s ease, toastOut 0.2s ease 2.3s forwards;
+  pointer-events: none;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toastOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}

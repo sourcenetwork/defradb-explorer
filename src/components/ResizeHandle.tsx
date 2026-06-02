@@ -12,21 +12,35 @@ export default function ResizeHandle({ direction, onResize }: Props) {
     const el = e.currentTarget
     el.setPointerCapture(e.pointerId)
 
-    let last = direction === 'horizontal' ? e.clientX : e.clientY
+    let last         = direction === 'horizontal' ? e.clientX : e.clientY
+    let rafId        = 0
+    let accumulated  = 0
 
     function onMove(ev: PointerEvent) {
       const current = direction === 'horizontal' ? ev.clientX : ev.clientY
-      onResize(current - last)
+      accumulated += current - last
       last = current
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          onResize(accumulated)
+          accumulated = 0
+          rafId = 0
+        })
+      }
     }
 
-    function onUp() {
+    function cleanup() {
+      cancelAnimationFrame(rafId)
       el.removeEventListener('pointermove', onMove)
-      el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('pointerup', cleanup)
+      el.removeEventListener('pointercancel', cleanup)
+      window.removeEventListener('pointerup', cleanup)
     }
 
     el.addEventListener('pointermove', onMove)
-    el.addEventListener('pointerup', onUp)
+    el.addEventListener('pointerup', cleanup)
+    el.addEventListener('pointercancel', cleanup)
+    window.addEventListener('pointerup', cleanup)
   }, [direction, onResize])
 
   return (

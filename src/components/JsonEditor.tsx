@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language'
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete'
 import { json } from '@codemirror/lang-json'
 import { tags } from '@lezer/highlight'
@@ -64,6 +64,7 @@ export default function JsonEditor({ value, onChange, placeholderText = '{}' }: 
         syntaxHighlighting(jsonHighlight),
         autocompletion(),
         closeBrackets(),
+        bracketMatching(),
         editorTheme,
         EditorView.updateListener.of(u => {
           if (u.docChanged) onChangeRef.current(u.state.doc.toString())

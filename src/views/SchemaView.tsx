@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useImperativeHandle, useEffect, useRef, forwardRef } from 'react'
 import { buildClientSchema, printType } from 'graphql'
 import { useIntrospection } from '../hooks/useIntrospection'
+import { useViews } from '../hooks/useViews'
 import type { IntrospectionType, IntrospectionField } from '../api/types'
 import { getBaseKind } from '../api/graphql'
 import ResizeHandle from '../components/ResizeHandle'
@@ -35,18 +36,26 @@ function resolveTypeName(field: IntrospectionField): string {
   return wrappers.includes('list') ? `[${name}]` : name
 }
 
+function resolveBaseTypeName(field: IntrospectionField): string {
+  let t = field.type
+  while (t.kind === 'NON_NULL' || t.kind === 'LIST') t = t.ofType!
+  return t.name ?? t.kind
+}
+
 const MIN_SIDEBAR  = 180
-const MAX_SIDEBAR  = 480
+const MAX_SIDEBAR  = () => Math.round(window.innerWidth * 0.5)
 
 const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
   const { data, isLoading, isError } = useIntrospection()
 
-  const {
-    schemaSubView: viewMode, setSchemaSubView: setViewMode,
-    schemaEditorMode: editorMode, setSchemaEditorMode: setEditorMode,
-    selectedSchemaType: activeType, setSelectedSchemaType: setActiveType,
-    schemaSidebarWidth: sidebarWidth, setSchemaSidebarWidth: setSidebarWidth,
-  } = useUIStore()
+  const viewMode       = useUIStore(s => s.schemaSubView)
+  const setViewMode    = useUIStore(s => s.setSchemaSubView)
+  const editorMode     = useUIStore(s => s.schemaEditorMode)
+  const setEditorMode  = useUIStore(s => s.setSchemaEditorMode)
+  const activeType     = useUIStore(s => s.selectedSchemaType)
+  const setActiveType  = useUIStore(s => s.setSelectedSchemaType)
+  const sidebarWidth   = useUIStore(s => s.schemaSidebarWidth)
+  const setSidebarWidth = useUIStore(s => s.setSchemaSidebarWidth)
 
   useImperativeHandle(ref, () => ({
     openCreate:     () => { setEditorMode('create'); setViewMode('editor') },
@@ -56,22 +65,40 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
   }))
 
   const onResizeSidebar = useCallback((delta: number) => {
-    setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR, sidebarWidth + delta)))
+    setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR(), sidebarWidth + delta)))
   }, [setSidebarWidth, sidebarWidth])
 
-  const userTypes = useMemo((): IntrospectionType[] => {
+  const { data: views } = useViews()
+
+  const viewNames = useMemo(() => new Set(views?.map(v => v.name) ?? []), [views])
+
+  const collectionTypes = useMemo((): IntrospectionType[] => {
     if (!data) return []
-    return data.__schema.types.filter(
-      t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT',
-    )
-  }, [data])
+    return data.__schema.types
+      .filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT' && !viewNames.has(t.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [data, viewNames])
+
+  const viewTypes = useMemo((): IntrospectionType[] => {
+    if (!data) return []
+    return data.__schema.types
+      .filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT' && viewNames.has(t.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [data, viewNames])
+
+  const userTypes = useMemo(() => [...collectionTypes, ...viewTypes], [collectionTypes, viewTypes])
 
   const enumTypes = useMemo((): IntrospectionType[] => {
     if (!data) return []
-    return data.__schema.types.filter(
-      t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'ENUM',
-    )
+    return data.__schema.types
+      .filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'ENUM')
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [data])
+
+  const navigableTypeNames = useMemo(
+    () => new Set([...userTypes, ...enumTypes].map(t => t.name)),
+    [userTypes, enumTypes],
+  )
 
   const selected = useMemo(() => {
     const name = activeType ?? userTypes[0]?.name
@@ -188,10 +215,10 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
       ) : (
         <div className={styles.view}>
           <aside className={styles.typeSidebar} style={{ width: sidebarWidth }}>
-            {userTypes.length > 0 && (
+            {collectionTypes.length > 0 && (
               <>
-                <p className={styles.groupLabel}>Types</p>
-                {userTypes.map(t => (
+                <p className={styles.groupLabel}>Collections</p>
+                {collectionTypes.map(t => (
                   <button
                     key={t.name}
                     className={`${styles.typeItem} ${(activeType ?? userTypes[0]?.name) === t.name ? styles.typeActive : ''}`}
@@ -199,6 +226,21 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
                   >
                     <span className={styles.typeItemName}>{t.name}</span>
                     <span className={styles.typeKind}>type</span>
+                  </button>
+                ))}
+              </>
+            )}
+            {viewTypes.length > 0 && (
+              <>
+                <p className={styles.groupLabel} style={{ marginTop: 12 }}>Views</p>
+                {viewTypes.map(t => (
+                  <button
+                    key={t.name}
+                    className={`${styles.typeItem} ${(activeType ?? userTypes[0]?.name) === t.name ? styles.typeActive : ''}`}
+                    onClick={() => setActiveType(t.name)}
+                  >
+                    <span className={styles.typeItemName}>{t.name}</span>
+                    <span className={styles.typeKind}>view</span>
                   </button>
                 ))}
               </>
@@ -243,14 +285,22 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
                   </thead>
                   <tbody>
                     {selected.fields.map(f => {
-                      const isRequired = f.type.kind === 'NON_NULL'
-                      const baseKind = getBaseKind(f.type)
-                      const isRelation = baseKind === 'OBJECT'
+                      const isRequired  = f.type.kind === 'NON_NULL'
+                      const baseKind    = getBaseKind(f.type)
+                      const isRelation  = baseKind === 'OBJECT' || baseKind === 'ENUM'
+                      const baseName    = resolveBaseTypeName(f)
+                      const navigable   = navigableTypeNames.has(baseName)
                       return (
                         <tr key={f.name}>
                           <td className={styles.fieldName}>{f.name}</td>
                           <td className={`${styles.fieldType} ${isRelation ? styles.fieldTypeRelation : ''}`}>
-                            {resolveTypeName(f)}
+                            {navigable ? (
+                              <button className={styles.fieldTypeLink} onClick={() => setActiveType(baseName)}>
+                                {resolveTypeName(f)}
+                              </button>
+                            ) : (
+                              resolveTypeName(f)
+                            )}
                           </td>
                           <td className={isRequired ? styles.fieldRequired : styles.fieldOptional}>
                             {isRequired ? 'yes' : 'no'}

@@ -24,10 +24,26 @@ function normalizeCollection(c: Record<string, unknown>): CollectionDescription 
   }
 }
 
-export async function fetchCollections(config: DefraConfig): Promise<CollectionDescription[]> {
+// Single fetch that splits collections and view names in one pass.
+export async function fetchCollectionsAndViewNames(
+  config: DefraConfig,
+): Promise<{ collections: CollectionDescription[]; viewNames: string[] }> {
   const result = await defraFetch<Record<string, unknown>[] | Record<string, unknown>>(config, '/collections')
   const arr = Array.isArray(result) ? result : [result]
-  return arr.filter(c => c.Query === null || c.Query === undefined).map(normalizeCollection)
+  const collections: CollectionDescription[] = []
+  const viewNames: string[] = []
+  for (const c of arr) {
+    if (c.Query === null || c.Query === undefined) {
+      collections.push(normalizeCollection(c))
+    } else {
+      viewNames.push(String(c.Name ?? ''))
+    }
+  }
+  return { collections, viewNames }
+}
+
+export async function fetchCollections(config: DefraConfig): Promise<CollectionDescription[]> {
+  return (await fetchCollectionsAndViewNames(config)).collections
 }
 
 export async function fetchCollectionIndexes(config: DefraConfig, collectionName: string): Promise<CollectionIndex[]> {

@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useConfig } from '../context/ConfigContext'
 import { executeGraphQL, subscribeGraphQL } from '../api/graphql'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
-import { useCollections } from '../hooks/useCollections'
+import { useCollections, useCollectionViewNames } from '../hooks/useCollections'
 import type { GraphQLResponse } from '../api/types'
 import GraphQLEditor from '../components/GraphQLEditor'
 import type { GraphQLEditorHandle } from '../components/GraphQLEditor'
@@ -226,6 +226,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   const editorRef  = useRef<GraphQLEditorHandle>(null)
   const { data: collections } = useCollections()
   const knownCollections = useMemo(() => new Set(collections?.map(c => c.name) ?? []), [collections])
+  const { data: viewNames } = useCollectionViewNames()
 
   // ── Subscription abort map ─────────────────────────────────────────────────
 
@@ -310,12 +311,14 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
 
   // ── Layout state ───────────────────────────────────────────────────────────
 
-  const {
-    queryShowSchema: showSchema, setQueryShowSchema: setShowSchema,
-    queryVarsOpen: varsOpen,     setQueryVarsOpen: setVarsOpen,
-    queryVarsHeight: varsHeight, setQueryVarsHeight: setVarsHeight,
-    querySchemaWidth: schemaWidth, setQuerySchemaWidth: setSchemaWidth,
-  } = useUIStore()
+  const showSchema    = useUIStore(s => s.queryShowSchema)
+  const setShowSchema = useUIStore(s => s.setQueryShowSchema)
+  const varsOpen      = useUIStore(s => s.queryVarsOpen)
+  const setVarsOpen   = useUIStore(s => s.setQueryVarsOpen)
+  const varsHeight    = useUIStore(s => s.queryVarsHeight)
+  const setVarsHeight = useUIStore(s => s.setQueryVarsHeight)
+  const schemaWidth   = useUIStore(s => s.querySchemaWidth)
+  const setSchemaWidth = useUIStore(s => s.setQuerySchemaWidth)
   const [editorWidth, setEditorWidth] = useState<number | null>(null)
   const [cursorOffset, setCursorOffset] = useState<number | null>(null)
 
@@ -446,6 +449,12 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
     : null
   const resultText = result ? JSON.stringify(result, null, 2) : ''
   const hasError   = !!(result?.errors || isError)
+  const docMap = useMemo(() => {
+    if (!onOpenInCollections || !result) return undefined
+    const m = new Map<string, string>()
+    for (const { collection, docID } of extractResultDocs(result, knownCollections)) m.set(docID, collection)
+    return m
+  }, [result, knownCollections, onOpenInCollections])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -463,6 +472,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
               query={activeTab.query}
               onQueryChange={setQuery}
               cursorOffset={cursorOffset}
+              viewNames={viewNames}
             />
           </div>
           <ResizeHandle direction="horizontal" onResize={onResizeSchema} />
@@ -657,11 +667,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
               <JsonViewer
                 value={resultText}
                 isError={hasError}
-                docMap={onOpenInCollections ? (() => {
-                  const m = new Map<string, string>()
-                  extractResultDocs(result, knownCollections).forEach(({ collection, docID }) => m.set(docID, collection))
-                  return m
-                })() : undefined}
+                docMap={docMap}
                 onOpenDoc={onOpenInCollections}
               />
             ) : (

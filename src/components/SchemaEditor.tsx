@@ -2,14 +2,15 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { closeBrackets } from '@codemirror/autocomplete'
+import { closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt } from 'cm6-graphql'
 import { useConfig } from '../context/ConfigContext'
 import { useIntrospection } from '../hooks/useIntrospection'
 import { useCollections } from '../hooks/useCollections'
+import { useViews } from '../hooks/useViews'
 import { createCollection, patchCollection, sdlToCollectionPatchOps } from '../api/graphql'
 import { queryKeys } from '../lib/queryKeys'
 import type { CollectionDescription } from '../api/types'
@@ -17,7 +18,7 @@ import type { IntrospectionType } from '../api/types'
 import ResizeHandle from './ResizeHandle'
 import { useUIStore } from '../store/uiStore'
 import { highlightRefCode, highlightJson } from '../lib/sdl'
-import { makeSdlCompletion } from '../lib/sdlComplete'
+import { makeSdlCompletion, DIRECTIVES_CREATE, DIRECTIVES_PATCH } from '../lib/sdlComplete'
 import { sdlFieldNameHighlighter } from '../lib/sdlFieldDecorator'
 import styles from './SchemaEditor.module.css'
 
@@ -160,11 +161,12 @@ function SDLEditor({ value, onChange, extra = [] }: {
         history(),
         lineNumbers(),
         drawSelection(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([{ key: 'Tab', run: acceptCompletion }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
         graphqlExt(),
         syntaxHighlighting(highlight),
         ...sdlFieldNameHighlighter(),
         closeBrackets(),
+        bracketMatching(),
         editorTheme,
         EditorView.lineWrapping,
         EditorView.updateListener.of(u => {
@@ -224,18 +226,35 @@ interface Props {
 }
 
 const MIN_GUIDE  = 280
-const MAX_GUIDE  = 600
+const MAX_GUIDE  = () => Math.round(window.innerWidth * 0.75)
 
 export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) {
   const { config }    = useConfig()
   const queryClient   = useQueryClient()
-  const { schemaEditorMode: storeMode, schemaGuideWidth, setSchemaGuideWidth } = useUIStore()
+  const storeMode                  = useUIStore(s => s.schemaEditorMode)
+  const schemaGuideWidth              = useUIStore(s => s.schemaGuideWidth)
+  const setSchemaGuideWidth           = useUIStore(s => s.setSchemaGuideWidth)
+  const schemaEditorPreviewHeight     = useUIStore(s => s.schemaEditorPreviewHeight)
+  const setSchemaEditorPreviewHeight  = useUIStore(s => s.setSchemaEditorPreviewHeight)
+  const schemaEditorDraftCreate    = useUIStore(s => s.schemaEditorDraftCreate)
+  const setSchemaEditorDraftCreate = useUIStore(s => s.setSchemaEditorDraftCreate)
+  const schemaEditorDraftPatch     = useUIStore(s => s.schemaEditorDraftPatch)
+  const setSchemaEditorDraftPatch  = useUIStore(s => s.setSchemaEditorDraftPatch)
   const { data: introspection } = useIntrospection()
   const { data: collections }   = useCollections()
+  const { data: views }         = useViews()
 
   // Honour initialMode on first mount; thereafter track store
   const [mode, setMode] = useState<'create' | 'patch'>(initialMode)
-  const [sdl, setSdl]   = useState(initialMode === 'patch' ? PATCH_TEMPLATE : CREATE_TEMPLATE)
+  const initialDraft = initialMode === 'patch'
+    ? (schemaEditorDraftPatch  || PATCH_TEMPLATE)
+    : (schemaEditorDraftCreate || CREATE_TEMPLATE)
+  const [sdl, setSdlRaw] = useState(initialDraft)
+  const setSdl = useCallback((v: string) => {
+    setSdlRaw(v)
+    if (mode === 'patch') setSchemaEditorDraftPatch(v)
+    else setSchemaEditorDraftCreate(v)
+  }, [mode, setSchemaEditorDraftCreate, setSchemaEditorDraftPatch])
   const [result, setResult] = useState<CollectionDescription[] | null>(null)
 
   // Live patch preview — derived from sdl whenever in patch mode
@@ -244,28 +263,32 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
     try { return sdlToCollectionPatchOps(sdl) } catch { return null }
   })()
 
-  const [previewHeight, setPreviewHeight] = useState(260)
-  const onResizePreview = useCallback((delta: number) => {
-    setPreviewHeight(prev => Math.max(80, Math.min(500, prev - delta)))
-  }, [])
 
   // User-defined type names for SDL completion
   const typeNamesRef = useRef<string[]>([])
   useEffect(() => {
     if (!introspection) return
+    const viewNames = new Set(views?.map(v => v.name) ?? [])
     typeNamesRef.current = introspection.__schema.types
-      .filter((t: IntrospectionType) => !HIDDEN_INTROSPECTION.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT')
+      .filter((t: IntrospectionType) => !HIDDEN_INTROSPECTION.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT' && !viewNames.has(t.name))
       .map((t: IntrospectionType) => t.name)
-  }, [introspection])
+  }, [introspection, views])
 
-  // Stable completion extension — reads typeNamesRef at completion time
-  const typeCompletion = useRef(makeSdlCompletion(() => typeNamesRef.current))
+  // Stable completion extension — reads typeNamesRef and modeRef at completion time
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const typeCompletion = useRef(makeSdlCompletion(
+    () => typeNamesRef.current,
+    () => modeRef.current === 'patch' ? DIRECTIVES_PATCH : DIRECTIVES_CREATE,
+  ))
 
   // Sync store → local when store changes externally (e.g. SchemaView opens patch)
   useEffect(() => {
     if (storeMode !== mode) {
       setMode(storeMode)
-      setSdl(storeMode === 'patch' ? PATCH_TEMPLATE : CREATE_TEMPLATE)
+      setSdlRaw(storeMode === 'patch'
+        ? (schemaEditorDraftPatch  || PATCH_TEMPLATE)
+        : (schemaEditorDraftCreate || CREATE_TEMPLATE))
       setResult(null)
     }
   }, [storeMode]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -273,8 +296,15 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
 const schemaGuideWidthRef = useRef(schemaGuideWidth)
   schemaGuideWidthRef.current = schemaGuideWidth
   const onResizeGuide = useCallback((delta: number) => {
-    setSchemaGuideWidth(Math.max(MIN_GUIDE, Math.min(MAX_GUIDE, schemaGuideWidthRef.current - delta)))
+    setSchemaGuideWidth(Math.max(MIN_GUIDE, Math.min(MAX_GUIDE(), schemaGuideWidthRef.current - delta)))
   }, [setSchemaGuideWidth])
+
+  const previewHeightRef = useRef(schemaEditorPreviewHeight)
+  previewHeightRef.current = schemaEditorPreviewHeight
+  const onResizePreview = useCallback((delta: number) => {
+    const maxH = Math.round(window.innerHeight * 0.75)
+    setSchemaEditorPreviewHeight(Math.max(80, Math.min(maxH, previewHeightRef.current - delta)))
+  }, [setSchemaEditorPreviewHeight])
 
   const { mutate, isPending, isError, error, reset } = useMutation({
     mutationFn: async () => {
@@ -284,6 +314,8 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
     },
     onSuccess: data => {
       setResult(data)
+      if (mode === 'patch') setSchemaEditorDraftPatch('')
+      else setSchemaEditorDraftCreate('')
       queryClient.invalidateQueries({ queryKey: queryKeys.introspection(config.baseUrl) })
       queryClient.invalidateQueries({ queryKey: queryKeys.collections(config.baseUrl) })
     },
@@ -343,7 +375,7 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
           {patchPreview !== null && (
             <>
               <ResizeHandle direction="vertical" onResize={onResizePreview} />
-              <div className={styles.patchPreviewPane} style={{ height: previewHeight }}>
+              <div className={styles.patchPreviewPane} style={{ height: schemaEditorPreviewHeight }}>
                 <div className={styles.patchPreviewPaneHeader}>
                   <span>JSON patch preview</span>
                   <PatchCopyBtn json={JSON.stringify(patchPreview, null, 2)} />
@@ -485,14 +517,14 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
 
                 <div className={styles.refSection}>
                   <p className={styles.refSectionHead}>@index</p>
-                  <p className={styles.refSectionDesc}>Without an index, filtering on a field requires scanning every document. Add <code>unique: true</code> to also enforce uniqueness — duplicate writes will fail.</p>
-                  <RefCode>{'name: String @index\nemail: String @index(unique: true)'}</RefCode>
+                  <p className={styles.refSectionDesc}>Without an index, filtering on a field requires scanning every document. Add <code>unique: true</code> to enforce uniqueness. Use <code>name:</code> for a custom index name and <code>direction:</code> to set default sort order.</p>
+                  <RefCode>{'name: String @index\nemail: String @index(unique: true)\ncreatedAt: DateTime @index(direction: DESC)\nscore: Int @index(name: "score_idx", direction: ASC)'}</RefCode>
                 </div>
 
                 <div id="sdl-default" className={styles.refSection}>
                   <p className={styles.refSectionHead}>@default</p>
-                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create. The argument key must match the field type: <code>bool:</code>, <code>int:</code>, <code>float:</code>, or <code>string:</code>.</p>
-                  <RefCode>{'active: Boolean @default(bool: true)\nage: Int @default(int: 0)\nstatus: String @default(string: "draft")'}</RefCode>
+                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create. The argument key must match the field type. Use <code>UTC_NOW</code> as a special value for DateTime to default to the current time.</p>
+                  <RefCode>{'active: Boolean @default(bool: true)\nage: Int @default(int: 0)\nstatus: String @default(string: "draft")\ncreatedAt: DateTime @default(dateTime: UTC_NOW)\nexpiry: DateTime @default(dateTime: "2030-01-01T00:00:00Z")\nmeta: JSON @default(json: "{}")\nthumb: Blob @default(blob: "ff0099")'}</RefCode>
                 </div>
 
                 {/* ── Relations ────────────────────────── */}
@@ -530,7 +562,7 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
 
                 <div className={styles.refSection}>
                   <p className={styles.refSectionHead}>@branchable</p>
-                  <p className={styles.refSectionDesc}>Enables commit-graph branching on this collection, similar to git branches. Documents can diverge and later be merged.</p>
+                  <p className={styles.refSectionDesc}>Enables commit-graph branching on this collection, similar to git branches. Use <code>@branchable(if: false)</code> to explicitly disable.</p>
                   <RefCode>{'type Events @branchable {\n  name: String\n}'}</RefCode>
                 </div>
 
@@ -539,17 +571,71 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
                   <p className={styles.refSectionDesc}>Attaches an ACP (access-control policy) to the collection. The <code>id</code> must match a policy registered with your ACP provider; <code>resource</code> names the entity within that policy.</p>
                   <RefCode>{'type Users @policy(\n  id: "acpPolicyId",\n  resource: "users"\n) {\n  name: String\n}'}</RefCode>
                 </div>
+
+                {/* ── Arrays & encryption ───────────────── */}
+                <p className={styles.refGroupLabel}>Arrays &amp; encryption</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@constraints</p>
+                  <p className={styles.refSectionDesc}>Limits the maximum number of elements in an array field.</p>
+                  <RefCode>{'tags: [String] @constraints(size: 10)\nnumbers: [Int!] @constraints(size: 4)'}</RefCode>
+                </div>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@encryptedIndex</p>
+                  <p className={styles.refSectionDesc}>Enables equality search over encrypted field values without decrypting them. Only <code>"equality"</code> is currently supported.</p>
+                  <RefCode>{'email: String @encryptedIndex\ntoken: String @encryptedIndex(type: "equality")'}</RefCode>
+                </div>
+
+                {/* ── Embeddings ────────────────────────── */}
+                <p className={styles.refGroupLabel}>Embeddings</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@embedding</p>
+                  <p className={styles.refSectionDesc}>Automatically generates a vector embedding from one or more text fields using an external provider. The field must be of type <code>[Float32!]</code>. Use <code>template</code> to control how fields are combined.</p>
+                  <RefCode>{'type Article {\n  title: String\n  body: String\n  embedding: [Float32!] @embedding(\n    provider: "ollama"\n    model: "nomic-embed-text"\n    url: "http://localhost:11434/api"\n    fields: ["title", "body"]\n  )\n}'}</RefCode>
+                </div>
               </>
             )}
 
             {mode === 'patch' && (
               <>
-                {/* ── CRDT for new fields ───────────────── */}
-                <p id="sdl-patch-crdt" className={styles.refGroupLabel}>CRDT for new fields</p>
+                {/* ── New field directives ──────────────── */}
+                <p id="sdl-patch-crdt" className={styles.refGroupLabel}>New field directives</p>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@index</p>
+                  <p className={styles.refSectionDesc}>Without an index, filtering on a field requires scanning every document. Add <code>unique: true</code> to enforce uniqueness. Use <code>name:</code> for a custom index name and <code>direction:</code> to set default sort order.</p>
+                  <RefCode>{'name: String @index\nemail: String @index(unique: true)\ncreatedAt: DateTime @index(direction: DESC)\nscore: Int @index(name: "score_idx", direction: ASC)'}</RefCode>
+                </div>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@default</p>
+                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create. The argument key must match the field type. Use <code>UTC_NOW</code> as a special value for DateTime to default to the current time.</p>
+                  <RefCode>{'active: Boolean @default(bool: true)\nage: Int @default(int: 0)\nstatus: String @default(string: "draft")\ncreatedAt: DateTime @default(dateTime: UTC_NOW)\nexpiry: DateTime @default(dateTime: "2030-01-01T00:00:00Z")\nmeta: JSON @default(json: "{}")\nthumb: Blob @default(blob: "ff0099")'}</RefCode>
+                </div>
+
                 <div className={styles.refSection}>
                   <p className={styles.refSectionHead}>@crdt</p>
-                  <p className={styles.refSectionDesc}>You can assign a CRDT merge strategy to new fields. Choose carefully — this cannot be changed later. <code>pncounter</code> / <code>pcounter</code> only apply to <code>Int</code> or <code>Float</code> fields and cannot be indexed.</p>
+                  <p className={styles.refSectionDesc}>Controls how concurrent writes to the same field are merged across nodes. Choose carefully — this cannot be changed later. <code>pncounter</code> / <code>pcounter</code> only apply to <code>Int</code> or <code>Float</code> fields and cannot be indexed.</p>
                   <RefCode>{'views: Int @crdt(type: pcounter)    # increment only\nscore: Int @crdt(type: pncounter)   # ± delta\nlabel: String @crdt(type: lww)      # last write wins (default)'}</RefCode>
+                </div>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@constraints</p>
+                  <p className={styles.refSectionDesc}>Limits the maximum number of elements in an array field.</p>
+                  <RefCode>{'tags: [String] @constraints(size: 10)\nnumbers: [Int!] @constraints(size: 4)'}</RefCode>
+                </div>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>@embedding</p>
+                  <p className={styles.refSectionDesc}>Automatically generates a vector embedding from one or more text fields using an external provider. The field must be of type <code>[Float32!]</code>. Use <code>template</code> to control how fields are combined.</p>
+                  <RefCode>{'embedding: [Float32!] @embedding(\n  provider: "ollama"\n  model: "nomic-embed-text"\n  url: "http://localhost:11434/api"\n  fields: ["title", "body"]\n)'}</RefCode>
+                </div>
+
+                <div className={styles.refSection}>
+                  <p className={styles.refSectionHead}>Note</p>
+                  <p className={styles.refSectionDesc}><code>@encryptedIndex</code> cannot be added via patch — DefraDB does not allow encrypted indexes to be mutated after collection creation.</p>
                 </div>
               </>
             )}

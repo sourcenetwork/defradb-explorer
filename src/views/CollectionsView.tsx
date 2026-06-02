@@ -11,6 +11,7 @@ import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
 import {
   useCreateDocument, useUpdateDocument, useDeleteDocument,
 } from '../hooks/useDocumentMutations'
+import { validateValues } from '../hooks/useDocumentMutations'
 import type { FormValues, TypeMap } from '../hooks/useDocumentMutations'
 import { useDocumentCommits } from '../hooks/useCommits'
 import { useCollectionIndexes } from '../hooks/useCollectionIndexes'
@@ -116,7 +117,10 @@ const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function Collec
   const { data: views } = useViews()
   const browserRef = useRef<CollectionBrowserHandle>(null)
 
-  const knownNames = (collections || views) ? new Set([...(collections ?? []).map(c => c.name), ...(views ?? []).map(v => v.name)]) : null
+  const knownNames = useMemo(
+    () => (collections || views) ? new Set([...(collections ?? []).map(c => c.name), ...(views ?? []).map(v => v.name)]) : null,
+    [collections, views],
+  )
   const collectionValid = !collection || !knownNames || knownNames.has(collection)
   const effectiveCollection = collectionValid
     ? (collection ?? collections?.[0]?.name ?? null)
@@ -159,7 +163,8 @@ export default CollectionsView
 // ── Browser ───────────────────────────────────────────────────────────────────
 
 const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: string; onViewSchema?: (name: string) => void; onOpenInQueryRunner?: (query: string) => void }>(function CollectionBrowser({ collection, onViewSchema, onOpenInQueryRunner }, ref) {
-  const { collectionsPageSize: pageSize, setCollectionsPageSize: setPageSize } = useUIStore()
+  const pageSize    = useUIStore(s => s.collectionsPageSize)
+  const setPageSize = useUIStore(s => s.setCollectionsPageSize)
   const [page, setPage]           = useState(1)
   const [filter, setFilter]       = useState('')
   const [searchField, setSearchField] = useState('_docID')
@@ -200,6 +205,26 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   )
 
   const gqlSchema  = useGraphQLSchema()
+
+  // Object-type fields in views that were excluded from the table query (need sub-selection)
+  const viewNestedFields = useMemo(() => {
+    if (!viewMeta || !gqlSchema) return []
+    const queryType = gqlSchema.getQueryType()
+    const collField = queryType?.getFields()[collection]
+    if (!collField) return []
+    const collType = getNamedType(collField.type)
+    if (!('getFields' in collType)) return []
+    const SKIP = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
+    return Object.entries((collType as { getFields(): Record<string, { type: GraphQLOutputType }> }).getFields())
+      .filter(([name, field]) => !name.startsWith('_') && !SKIP.has(name) && 'getFields' in getNamedType(field.type))
+      .map(([name, field]) => {
+        const nestedType = getNamedType(field.type) as { getFields(): Record<string, { type: GraphQLOutputType }> }
+        const subFields = Object.entries(nestedType.getFields())
+          .filter(([fn, ff]) => !fn.startsWith('_') && !SKIP.has(fn) && !('getFields' in getNamedType(ff.type)))
+          .map(([fn]) => fn)
+        return { name, subFields }
+      })
+  }, [viewMeta, gqlSchema, collection])
 
   // Split into single-object relations (safe: fetch { _docID }) vs list/many relations
   // (unsafe in table: could return thousands of rows — excluded from column query).
@@ -269,7 +294,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
     const collType = getNamedType(collField.type)
     if (!('getFields' in collType)) return []
     return Object.values((collType as { getFields(): Record<string, { name: string; type: GraphQLOutputType }> }).getFields())
-      .filter(f => !f.name.startsWith('_') && !SKIP_FIELDS.has(f.name))
+      .filter(f => !f.name.startsWith('_') && !SKIP_FIELDS.has(f.name) && !('getFields' in getNamedType(f.type)))
       .map(f => ({ name: f.name, typeName: getNamedType(f.type).name, required: false }))
   }, [viewMeta, gqlSchema, collection])
 
@@ -299,8 +324,14 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
           const collType = getNamedType(collField.type)
           if ('getFields' in collType) {
             const SKIP = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
-            const fields = Object.keys((collType as { getFields(): Record<string, unknown> }).getFields())
-              .filter(f => !f.startsWith('_') && !SKIP.has(f))
+            const typeFields = (collType as { getFields(): Record<string, { type: GraphQLOutputType }> }).getFields()
+            const fields = Object.entries(typeFields)
+              .filter(([name, field]) => {
+                if (name.startsWith('_') || SKIP.has(name)) return false
+                // Exclude object types — they need sub-selection and aren't scalar view outputs
+                return !('getFields' in getNamedType(field.type))
+              })
+              .map(([name]) => name)
             if (fields.length > 0) return fields
           }
         }
@@ -315,6 +346,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const { data: totalCount = 0 } = useDocumentCount(collection, search, searchField, searchFieldType, effectiveOp, relationFields)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [showNewDoc, setShowNewDoc]   = useState(false)
+  const [toast, setToast]             = useState<string | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
@@ -462,6 +494,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
             formFields={formFields}
             relationFields={singleRelationFields}
             listRelationFields={listRelationFields}
+            viewNestedFields={viewNestedFields}
             hasDocID={hasDocID}
             onClose={() => setSelectedIdx(null)}
             onUpdate={(docID, values, original) => updateMut.mutateAsync({ docID, values, typeMap, original })}
@@ -480,14 +513,27 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
         <NewDocModal
           collection={collection}
           formFields={formFields}
+          typeMap={typeMap}
           isPending={createMut.isPending}
           error={createMut.error as Error | null}
           onClose={() => { setShowNewDoc(false); createMut.reset() }}
           onSubmit={async (values) => {
             await createMut.mutateAsync({ values, typeMap })
             setShowNewDoc(false)
+            setToast('Document created')
+            setTimeout(() => setToast(null), 2500)
           }}
         />
+      )}
+      {toast && (
+        <div className={styles.toast}>
+          <svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+            <circle cx={7} cy={7} r={6} fill="var(--green)" opacity={0.2}/>
+            <circle cx={7} cy={7} r={6} stroke="var(--green)" strokeWidth={1.2}/>
+            <path d="M4.5 7.2l1.8 1.8 3.2-3.6" stroke="var(--green-btn)" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {toast}
+        </div>
       )}
     </div>
   )
@@ -948,13 +994,14 @@ function ListRelationField({ name, collection, docID }: { name: string; collecti
 
 type PanelMode = 'view' | 'history' | 'graph'
 
-function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
+function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, viewNestedFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
   doc:                Record<string, unknown>
   fields:             string[]
   collection:         string
   formFields:         FormField[]
   relationFields?:    Set<string>
   listRelationFields?: Set<string>
+  viewNestedFields?:  { name: string; subFields: string[] }[]
   hasDocID?:          boolean
   onClose:            () => void
   onUpdate:           (docID: string, values: FormValues, original: FormValues) => Promise<unknown>
@@ -995,6 +1042,36 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   }
 
   const { data: commits, isLoading: histLoading, error: histError, refetch: refetchCommits } = useDocumentCommits(docID)
+
+  const commitRows = useMemo(() => {
+    if (!commits) return null
+    const byHeight = new Map<number, typeof commits>()
+    for (const c of commits) {
+      if (!byHeight.has(c.height)) byHeight.set(c.height, [])
+      byHeight.get(c.height)!.push(c)
+    }
+    const compositeCidByHeight = new Map<number, string>()
+    for (const [h, group] of byHeight) {
+      const comp = group.find(c => c.fieldName === '_C')
+      if (comp) compositeCidByHeight.set(h, comp.cid)
+    }
+    const maxHeight = Math.max(...byHeight.keys())
+    return [...byHeight.entries()]
+      .sort(([a], [b]) => b - a)
+      .map(([height, group]) => {
+        const composite    = group.find(c => c.fieldName === '_C')
+        const cid          = composite?.cid ?? group[0]?.cid ?? ''
+        const parentCID    = compositeCidByHeight.get(height - 1) ?? null
+        const changedLinks = composite?.links.filter(l => l.fieldName && l.fieldName !== '_C') ?? []
+        const shortCid     = cid.length > 20 ? `${cid.slice(0, 10)}…${cid.slice(-6)}` : cid
+        const shortParent  = parentCID && parentCID.length > 16 ? `${parentCID.slice(0, 8)}…${parentCID.slice(-4)}` : parentCID
+        const isHead   = height === maxHeight
+        const isRoot   = height === 1
+        const isMerge  = (byHeight.get(height - 1)?.filter(c => c.fieldName === '_C').length ?? 0) > 1
+        return { height, cid, parentCID, changedLinks, shortCid, shortParent, isHead, isRoot, isMerge }
+      })
+  }, [commits])
+
   const { data: fullDoc, refetch: refetchDoc } = useDocumentById(collection, docID, fields, relationFields)
   const currentVersion = commits?.[0]?.height ?? null
 
@@ -1022,6 +1099,8 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   async function saveEdit() {
     try {
       setMutErr(null)
+      const jsonErr = validateValues(editValues, Object.fromEntries(editableFields.map(f => [f.name, f.typeName])))
+      if (jsonErr) { setMutErr(jsonErr); return }
       const source = fullDoc ?? doc
       const original: FormValues = {}
       for (const f of editableFields) {
@@ -1076,7 +1155,9 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
       {onOpenInQueryRunner && (
         <div className={styles.detailSecondaryBar}>
           <button className={styles.detailSecondaryBtn} onClick={() => {
-            const sel = fields.map(f => relationFields?.has(f) ? `${f} { _docID }` : f).join(' ')
+            const scalars = fields.map(f => relationFields?.has(f) ? `${f} { _docID }` : f).join(' ')
+            const nested  = viewNestedFields?.map(f => `${f.name} { ${f.subFields.join(' ')} }`).join(' ') ?? ''
+            const sel   = [scalars, nested].filter(Boolean).join(' ')
             const query = hasDocID && docID
               ? `{ ${collection}(filter: { _docID: { _eq: ${JSON.stringify(docID)} } }) { ${sel} } }`
               : `{ ${collection} { ${sel} } }`
@@ -1146,10 +1227,10 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
                   ) : (
                     <input
                       className={styles.fieldInput}
-                      type={f.typeName === 'Int' || f.typeName === 'Float' ? 'number' : 'text'}
+                      type={inputTypeFor(f.typeName)}
                       value={editValues[f.name] ?? ''}
                       onChange={e => setEditValues(p => ({ ...p, [f.name]: e.target.value }))}
-                      placeholder={f.required ? 'required' : 'optional'}
+                      placeholder={placeholderFor(f.typeName, f.required)}
                     />
                   )}
                 </div>
@@ -1175,6 +1256,24 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
                 {listRelationFields && [...listRelationFields].map(f => (
                   <ListRelationField key={f} name={f} collection={collection} docID={docID} />
                 ))}
+                {viewNestedFields && viewNestedFields.length > 0 && (
+                  <>
+                    <div className={styles.detailSectionLabelRow} style={{ marginTop: 8 }}>
+                      <p className={styles.detailSectionLabel}>Nested fields</p>
+                    </div>
+                    {viewNestedFields.map(f => (
+                      <div key={f.name} className={styles.fieldGroup}>
+                        <div className={styles.fieldKeyRow}>
+                          <p className={styles.fieldKey}>{f.name}</p>
+                          <span className={styles.colsRelBadge}>nested</span>
+                        </div>
+                        <p className={styles.fieldVal} style={{ color: 'var(--gray-600)', fontSize: 11, fontStyle: 'italic' }}>
+                          not loaded — use Open in Query Runner
+                        </p>
+                      </div>
+                    ))}
+                  </>
+                )}
               </>
             )}
           </>
@@ -1195,70 +1294,46 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
             {!histLoading && !histError && commits?.length === 0 && (
               <p className={styles.histEmpty}>No commits found.</p>
             )}
-            {commits && (() => {
-              const byHeight = new Map<number, typeof commits>()
-              for (const c of commits) {
-                if (!byHeight.has(c.height)) byHeight.set(c.height, [])
-                byHeight.get(c.height)!.push(c)
-              }
-              const compositeCidByHeight = new Map<number, string>()
-              for (const [h, group] of byHeight) {
-                const comp = group.find(c => c.fieldName === '_C')
-                if (comp) compositeCidByHeight.set(h, comp.cid)
-              }
-              const maxHeight = Math.max(...byHeight.keys())
-              return [...byHeight.entries()]
-                .sort(([a], [b]) => b - a)
-                .map(([height, group]) => {
-                  const composite    = group.find(c => c.fieldName === '_C')
-                  const cid          = composite?.cid ?? group[0]?.cid ?? ''
-                  const parentCID    = compositeCidByHeight.get(height - 1) ?? null
-                  const changedLinks = composite?.links.filter(l => l.fieldName && l.fieldName !== '_C') ?? []
-                  const shortCid     = cid.length > 20 ? `${cid.slice(0, 10)}…${cid.slice(-6)}` : cid
-                  const shortParent  = parentCID && parentCID.length > 16 ? `${parentCID.slice(0, 8)}…${parentCID.slice(-4)}` : parentCID
-                  const isOpen   = openCids.has(cid)
-                  const isHead   = height === maxHeight
-                  const isRoot   = height === 1
-                  const isMerge  = (byHeight.get(height - 1)?.filter(c => c.fieldName === '_C').length ?? 0) > 1
-                  return (
-                    <div key={height} className={`${styles.histVersion} ${isOpen ? styles.histVersionOpen : ''}`} onClick={() => toggleCid(cid)}>
-                      <div className={styles.histVersionHead}>
-                        <span className={styles.histHeight}>v{height}</span>
-                        {isHead  && <span className={styles.tagHead}>head</span>}
-                        {isMerge && <span className={styles.tagMerge}>merge</span>}
-                        {isRoot  && <span className={styles.tagRoot}>root</span>}
-                        <div className={styles.histCidRow}>
-                          <span className={styles.histCid} title={cid}>{shortCid}</span>
-                          <span onClick={e => e.stopPropagation()}>
-                            <HistCopyButton text={cid} />
-                          </span>
-                        </div>
-                        {shortParent && (
-                          <span className={styles.histParent} title={parentCID ?? ''}>← {shortParent}</span>
-                        )}
-                        <ChevronDown size={12} className={`${styles.histChevron} ${isOpen ? styles.histChevronOpen : ''}`} />
-                      </div>
-                      {changedLinks.length > 0 && (
-                        <div className={styles.histFieldTags}>
-                          {changedLinks.map(l => (
-                            <span key={l.cid} className={`${styles.histField} ${styles.histFieldChanged}`} title={l.cid}>
-                              {l.fieldName}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {isOpen && (
-                        <VersionSnapshot
-                          collection={collection}
-                          cid={cid}
-                          parentCid={parentCID}
-                          changedFields={new Set(changedLinks.map(l => l.fieldName ?? ''))}
-                        />
-                      )}
+            {commitRows?.map(({ height, cid, parentCID, changedLinks, shortCid, shortParent, isHead, isRoot, isMerge }) => {
+              const isOpen = openCids.has(cid)
+              return (
+                <div key={height} className={`${styles.histVersion} ${isOpen ? styles.histVersionOpen : ''}`} onClick={() => toggleCid(cid)}>
+                  <div className={styles.histVersionHead}>
+                    <span className={styles.histHeight}>v{height}</span>
+                    {isHead  && <span className={styles.tagHead}>head</span>}
+                    {isMerge && <span className={styles.tagMerge}>merge</span>}
+                    {isRoot  && <span className={styles.tagRoot}>root</span>}
+                    <div className={styles.histCidRow}>
+                      <span className={styles.histCid} title={cid}>{shortCid}</span>
+                      <span onClick={e => e.stopPropagation()}>
+                        <HistCopyButton text={cid} />
+                      </span>
                     </div>
-                  )
-                })
-            })()}
+                    {shortParent && (
+                      <span className={styles.histParent} title={parentCID ?? ''}>← {shortParent}</span>
+                    )}
+                    <ChevronDown size={12} className={`${styles.histChevron} ${isOpen ? styles.histChevronOpen : ''}`} />
+                  </div>
+                  {changedLinks.length > 0 && (
+                    <div className={styles.histFieldTags}>
+                      {changedLinks.map(l => (
+                        <span key={l.cid} className={`${styles.histField} ${styles.histFieldChanged}`} title={l.cid}>
+                          {l.fieldName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {isOpen && (
+                    <VersionSnapshot
+                      collection={collection}
+                      cid={cid}
+                      parentCid={parentCID}
+                      changedFields={new Set(changedLinks.map(l => l.fieldName ?? ''))}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </>
         )}
 
@@ -1361,17 +1436,34 @@ function VersionSnapshot({ collection, cid, parentCid, changedFields }: {
   )
 }
 
+// ── Field input helpers ───────────────────────────────────────────────────────
+
+function inputTypeFor(typeName: string): React.HTMLInputTypeAttribute {
+  if (['Int', 'Float', 'Float32', 'Float64'].includes(typeName)) return 'number'
+  return 'text'
+}
+
+function placeholderFor(typeName: string, required: boolean): string {
+  if (typeName === 'JSON')     return required ? 'required — e.g. {"key": "value"}' : 'e.g. {"key": "value"}'
+  if (typeName === 'Blob')     return required ? 'required — hex string e.g. ff0099' : 'hex string e.g. ff0099'
+  if (typeName === 'DateTime') return required ? 'required — e.g. 2024-01-01 or 2024-01-01T12:00:00Z' : 'e.g. 2024-01-01 or 2024-01-01T12:00:00Z'
+  return required ? 'required' : 'optional'
+}
+
+
 // ── New document modal ────────────────────────────────────────────────────────
 
-function NewDocModal({ collection, formFields, isPending, error, onClose, onSubmit }: {
+function NewDocModal({ collection, formFields, typeMap, isPending, error, onClose, onSubmit }: {
   collection: string
   formFields: FormField[]
+  typeMap:    TypeMap
   isPending:  boolean
   error:      Error | null
   onClose:    () => void
   onSubmit:   (values: FormValues) => Promise<void>
 }) {
   const [values, setValues] = useState<FormValues>({})
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   // Fall back to a generic text field if schema hasn't loaded yet
   const fields: FormField[] = formFields.length > 0
@@ -1384,6 +1476,9 @@ function NewDocModal({ collection, formFields, isPending, error, onClose, onSubm
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const err = validateValues(values, typeMap)
+    if (err) { setValidationError(err); return }
+    setValidationError(null)
     await onSubmit(values)
   }
 
@@ -1395,7 +1490,7 @@ function NewDocModal({ collection, formFields, isPending, error, onClose, onSubm
           <button className={styles.modalClose} onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className={styles.modalForm}>
           <div className={styles.modalBody}>
             {fields.map(f => (
               <div key={f.name} className={styles.formGroup}>
@@ -1417,16 +1512,17 @@ function NewDocModal({ collection, formFields, isPending, error, onClose, onSubm
                 ) : (
                   <input
                     className={styles.formInput}
-                    type={f.typeName === 'Int' || f.typeName === 'Float' ? 'number' : 'text'}
+                    type={inputTypeFor(f.typeName)}
                     value={values[f.name] ?? ''}
                     onChange={e => set(f.name, e.target.value)}
-                    placeholder={f.required ? 'required' : 'optional'}
+                    placeholder={placeholderFor(f.typeName, f.required)}
                     required={f.required}
                   />
                 )}
               </div>
             ))}
 
+            {validationError && <p className={styles.modalError}>{validationError}</p>}
             {error && <p className={styles.modalError}>{error.message}</p>}
           </div>
 

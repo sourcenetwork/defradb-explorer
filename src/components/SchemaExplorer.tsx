@@ -36,8 +36,12 @@ function formatType(type: GraphQLOutputType): string {
 
 function scalarPlaceholder(typeName: string): string {
   switch (typeName) {
-    case 'Int': return '0'; case 'Float': return '0.0'
-    case 'Boolean': return 'false'; case 'DateTime': return '"2024-01-01T00:00:00Z"'
+    case 'Int': return '0'
+    case 'Float': case 'Float32': case 'Float64': return '0.0'
+    case 'Boolean': return 'false'
+    case 'DateTime': return '"2024-01-01T00:00:00Z"'
+    case 'JSON': return '"{}"'
+    case 'Blob': return '"ff0099"'
     default: return '""'
   }
 }
@@ -80,8 +84,21 @@ function buildMutationTemplate(field: GraphQLField<unknown, unknown>): string {
   }
   if (argMap.has('input') && argMap.has('filter')) {
     const it = getNamedType(argMap.get('input')!.type)
-    const two = isInputObjectType(it) ? Object.values(it.getFields()).filter(f => !f.name.startsWith('_')).slice(0, 2).map(f => `      ${f.name}: `).join('\n') : ''
+    const two = isInputObjectType(it)
+      ? Object.values(it.getFields()).filter(f => !f.name.startsWith('_')).slice(0, 2)
+          .map(f => { const n = getNamedType(f.type); return `      ${f.name}: ${isScalarType(n) ? scalarPlaceholder(n.name) : '{}'}` }).join('\n')
+      : ''
     return `mutation {\n  ${field.name}(\n    filter: { _docID: { _eq: "" } }\n    input: {\n${two}\n    }\n  ) {\n${sel}\n  }\n}`
+  }
+  if (argMap.has('add')) {
+    const addType = getNamedType(argMap.get('add')!.type)
+    const addFields = isInputObjectType(addType) ? inputFields(addType) : ''
+    const updType = argMap.has('update') ? getNamedType(argMap.get('update')!.type) : null
+    const updateFields = updType && isInputObjectType(updType)
+      ? Object.values(updType.getFields()).filter(f => !f.name.startsWith('_')).slice(0, 2)
+          .map(f => { const n = getNamedType(f.type); return `      ${f.name}: ${isScalarType(n) ? scalarPlaceholder(n.name) : '{}'}` }).join('\n')
+      : ''
+    return `mutation {\n  ${field.name}(\n    filter: { _docID: { _eq: "" } }\n    add: {\n${addFields}\n    }\n    update: {\n${updateFields}\n    }\n  ) {\n${sel}\n  }\n}`
   }
   if (argMap.has('filter') || argMap.has('docID')) {
     return `mutation {\n  ${field.name}(\n    filter: { _docID: { _eq: "" } }\n  ) {\n${sel}\n  }\n}`
@@ -610,9 +627,10 @@ function RootPage({ schema, onNavigate }: {
 
 // ── Op list page (all queries or all mutations) ───────────────────────────────
 
-function OpListPage({ schema, opKind, onNavigate }: {
+function OpListPage({ schema, opKind, viewNames = new Set(), onNavigate }: {
   schema: GraphQLSchema
   opKind: 'query' | 'mutation' | 'subscription'
+  viewNames?: Set<string>
   onNavigate: (page: NavPage) => void
 }) {
   const [search, setSearch] = useState('')
@@ -627,17 +645,27 @@ function OpListPage({ schema, opKind, onNavigate }: {
     () => rootType ? Object.values(rootType.getFields()).filter(f => f.name !== '_') : [],
     [rootType],
   )
-  const isAggregate  = (f: GraphQLField<unknown, unknown>) => AGGREGATE_NAMES.has(f.name) || f.name.endsWith('_aggregate')
-  const isSystem     = (f: GraphQLField<unknown, unknown>) => f.name.startsWith('_') && !isAggregate(f)
-  const mainFields   = allFields.filter(f => !isAggregate(f) && !isSystem(f) && (!q || f.name.toLowerCase().includes(q)))
-  const aggFields    = allFields.filter(f =>  isAggregate(f) && (!q || f.name.toLowerCase().includes(q)))
-  const systemFields = allFields.filter(f =>  isSystem(f)    && (!q || f.name.toLowerCase().includes(q)))
+  const collFields: GraphQLField<unknown, unknown>[] = []
+  const viewFields: GraphQLField<unknown, unknown>[] = []
+  const aggFields:  GraphQLField<unknown, unknown>[] = []
+  const systemFields: GraphQLField<unknown, unknown>[] = []
+  for (const f of allFields) {
+    if (q && !f.name.toLowerCase().includes(q)) continue
+    const isAgg = AGGREGATE_NAMES.has(f.name) || f.name.endsWith('_aggregate')
+    if (isAgg) { aggFields.push(f); continue }
+    if (f.name.startsWith('_')) { systemFields.push(f); continue }
+    if (viewNames.has(f.name)) { viewFields.push(f) } else { collFields.push(f) }
+  }
+  const empty = collFields.length === 0 && viewFields.length === 0 && aggFields.length === 0 && systemFields.length === 0
 
   return (
     <>
       <SearchBox value={search} onChange={setSearch} />
-      {mainFields.length > 0 && (
-        <CollectionsGroup fields={mainFields} onNavigate={f => onNavigate({ kind: 'operation', opKind, field: f })} />
+      {collFields.length > 0 && (
+        <CollectionsGroup fields={collFields} onNavigate={f => onNavigate({ kind: 'operation', opKind, field: f })} />
+      )}
+      {viewFields.length > 0 && (
+        <ViewsGroup fields={viewFields} onNavigate={f => onNavigate({ kind: 'operation', opKind, field: f })} />
       )}
       {aggFields.length > 0 && (
         <AggregateGroup fields={aggFields} onNavigate={f => onNavigate({ kind: 'operation', opKind: 'query', field: f })} />
@@ -645,7 +673,7 @@ function OpListPage({ schema, opKind, onNavigate }: {
       {systemFields.length > 0 && (
         <SystemGroup fields={systemFields} onNavigate={f => onNavigate({ kind: 'operation', opKind, field: f })} />
       )}
-      {mainFields.length === 0 && aggFields.length === 0 && systemFields.length === 0 && search && (
+      {empty && search && (
         <p className={styles.noResults}>No results for "{search}"</p>
       )}
     </>
@@ -664,7 +692,8 @@ function TypeListPage({ schema, query, onNavigate }: {
   const typeMap = schema.getTypeMap()
 
   const userTypes = useMemo(
-    () => Object.values(typeMap).filter(t => isObjectType(t) && !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_')) as GraphQLObjectType[],
+    () => (Object.values(typeMap).filter(t => isObjectType(t) && !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_')) as GraphQLObjectType[])
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [typeMap],
   ).filter(t => !q || t.name.toLowerCase().includes(q))
 
@@ -722,6 +751,22 @@ function CollectionsGroup({ fields, onNavigate }: { fields: GraphQLField<unknown
     <>
       <button className={`${styles.rootRow} ${styles.rootRowDim}`} onClick={() => setOpen(v => !v)}>
         <span className={styles.rootRowName} style={{ color: 'var(--gray-600)' }}>Collections</span>
+        <span className={styles.rootRowBadge}>{fields.length}</span>
+        <span className={styles.rootRowChevron} style={{ transform: open ? 'rotate(90deg)' : undefined }}><ChevronRightIcon /></span>
+      </button>
+      {open && fields.map(f => (
+        <RootRow key={f.name} name={f.name} returnType={formatType(f.type as GraphQLOutputType)} onNavigate={() => onNavigate(f)} />
+      ))}
+    </>
+  )
+}
+
+function ViewsGroup({ fields, onNavigate }: { fields: GraphQLField<unknown,unknown>[]; onNavigate: (f: GraphQLField<unknown,unknown>) => void }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <>
+      <button className={`${styles.rootRow} ${styles.rootRowDim}`} onClick={() => setOpen(v => !v)}>
+        <span className={styles.rootRowName} style={{ color: 'var(--gray-600)' }}>Views</span>
         <span className={styles.rootRowBadge}>{fields.length}</span>
         <span className={styles.rootRowChevron} style={{ transform: open ? 'rotate(90deg)' : undefined }}><ChevronRightIcon /></span>
       </button>
@@ -833,9 +878,10 @@ interface Props {
   query: string
   onQueryChange: (q: string, cursorAt?: number) => void
   cursorOffset?: number | null
+  viewNames?: Set<string>
 }
 
-export default function SchemaExplorer({ schema, onInsert, query, onQueryChange, cursorOffset }: Props) {
+export default function SchemaExplorer({ schema, onInsert, query, onQueryChange, cursorOffset, viewNames }: Props) {
   const [stack, setStack] = useState<NavPage[]>([{ kind: 'root' }])
   const current = stack[stack.length - 1]
 
@@ -1010,7 +1056,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
           <RootPage schema={schema} onNavigate={navigate} />
         )}
         {current.kind === 'opList' && (
-          <OpListPage schema={schema} opKind={current.opKind} onNavigate={navigate} />
+          <OpListPage schema={schema} opKind={current.opKind} viewNames={viewNames} onNavigate={navigate} />
         )}
         {current.kind === 'typeList' && (
           <TypeListPage schema={schema} query={query} onNavigate={navigate} />

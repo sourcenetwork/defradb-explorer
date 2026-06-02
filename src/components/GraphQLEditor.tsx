@@ -1,9 +1,9 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
 import { EditorView, keymap, placeholder, lineNumbers, drawSelection } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { autocompletion, closeBrackets } from '@codemirror/autocomplete'
+import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt, updateSchema } from 'cm6-graphql'
 import { parse, print } from 'graphql'
@@ -173,6 +173,7 @@ function GraphQLEditor({ value, onChange, onRun, schema, onCursorOffset }, ref) 
         drawSelection(),
         keymap.of([
           { key: 'Mod-Enter', run: () => { onRunRef.current(); return true } },
+          { key: 'Tab', run: acceptCompletion },
           ...defaultKeymap,
           ...historyKeymap,
           indentWithTab,
@@ -181,8 +182,17 @@ function GraphQLEditor({ value, onChange, onRun, schema, onCursorOffset }, ref) 
         graphqlExt(),
         syntaxHighlighting(graphqlHighlight),
         ...gqlRootFieldHighlighter(),
-        autocompletion(),
+        autocompletion({
+          compareCompletions: (a, b) => {
+            const AGG = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
+            const rank = (l: string) => AGG.has(l) ? 1 : 0
+            const diff = rank(a.label) - rank(b.label)
+            if (diff !== 0) return diff
+            return a.label < b.label ? -1 : a.label > b.label ? 1 : 0
+          },
+        }),
         closeBrackets(),
+        bracketMatching(),
         dashboardTheme,
         EditorView.updateListener.of(update => {
           if (update.docChanged) onChangeRef.current(update.state.doc.toString())

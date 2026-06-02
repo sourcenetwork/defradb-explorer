@@ -332,7 +332,10 @@ export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollect
   onOpenInQueryRunner?: (query: string) => void
   onOpenInCollections?: (collection: string, docID: string) => void
 }) {
-  const { commitsDocID, setCommitsDocID, commitsViewMode, setCommitsViewMode } = useUIStore()
+  const commitsDocID       = useUIStore(s => s.commitsDocID)
+  const setCommitsDocID    = useUIStore(s => s.setCommitsDocID)
+  const commitsViewMode    = useUIStore(s => s.commitsViewMode)
+  const setCommitsViewMode = useUIStore(s => s.setCommitsViewMode)
   const [input, setInput] = useState(commitsDocID ?? '')
   const [pendingCID, setPendingCID] = useState<string | null>(null)
   const docID = commitsDocID
