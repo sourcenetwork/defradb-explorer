@@ -136,13 +136,6 @@ const SDL_PLACEHOLDER = `type MyView {
   fieldTwo: Int
 }`
 
-const QUERY_PLACEHOLDER = `{
-  CollectionName {
-    fieldOne
-    fieldTwo
-  }
-}`
-
 function stripBraces(q: string): string {
   const trimmed = q.trim()
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
@@ -154,7 +147,6 @@ function stripBraces(q: string): string {
 const MIN_GUIDE   = 280
 const MAX_GUIDE   = () => Math.round(window.innerWidth * 0.75)
 const MIN_SDL_H   = 80
-const DEFAULT_SDL_H = 220
 
 // Extract output field names + types from a GraphQL query string.
 // Respects aliases: `alias: field` → output name is `alias`.
