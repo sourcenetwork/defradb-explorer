@@ -12,6 +12,10 @@ function serializeVal(value: string, typeName: string): string {
     case 'Boolean':                               return value === 'true' ? 'true' : 'false'
     case 'Int':                                   return String(parseInt(value, 10))
     case 'Float': case 'Float32': case 'Float64': return String(parseFloat(value))
+    case 'DateTime': {
+      const d = new Date(value)
+      return JSON.stringify(isNaN(d.getTime()) ? value : d.toISOString())
+    }
     default:        return JSON.stringify(value)
   }
 }
@@ -23,6 +27,9 @@ export function validateValues(values: FormValues, typeMap: TypeMap): string | n
       try { JSON.parse(value) } catch {
         return `"${key}" is not valid JSON`
       }
+    }
+    if (typeMap[key] === 'DateTime') {
+      if (isNaN(new Date(value).getTime())) return `"${key}" is not a valid date`
     }
   }
   return null

@@ -1183,7 +1183,7 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
                       className={styles.fieldInput}
                       type={inputTypeFor(f.typeName)}
                       value={editValues[f.name] ?? ''}
-                      onChange={e => setEditValues(p => ({ ...p, [f.name]: toIso(e.target.value, f.typeName) }))}
+                      onChange={e => setEditValues(p => ({ ...p, [f.name]: e.target.value }))}
                       placeholder={placeholderFor(f.typeName, f.required)}
                     />
                   )}
@@ -1418,21 +1418,16 @@ function VersionSnapshot({ collection, cid, parentCid, changedFields }: {
 
 function inputTypeFor(typeName: string): React.HTMLInputTypeAttribute {
   if (['Int', 'Float', 'Float32', 'Float64'].includes(typeName)) return 'number'
-  if (typeName === 'DateTime') return 'datetime-local'
   return 'text'
 }
 
 function placeholderFor(typeName: string, required: boolean): string {
   if (typeName === 'JSON')     return required ? 'required — e.g. {"key": "value"}' : 'e.g. {"key": "value"}'
   if (typeName === 'Blob')     return required ? 'required — hex string e.g. ff0099' : 'hex string e.g. ff0099'
+  if (typeName === 'DateTime') return required ? 'required — e.g. 2024-01-01 or 2024-01-01T12:00:00Z' : 'e.g. 2024-01-01 or 2024-01-01T12:00:00Z'
   return required ? 'required' : 'optional'
 }
 
-// Convert datetime-local value (YYYY-MM-DDTHH:mm) to ISO 8601 for DefraDB
-function toIso(v: string, typeName: string): string {
-  if (typeName === 'DateTime' && v) return new Date(v).toISOString()
-  return v
-}
 
 // ── New document modal ────────────────────────────────────────────────────────
 
@@ -1497,7 +1492,7 @@ function NewDocModal({ collection, formFields, typeMap, isPending, error, onClos
                     className={styles.formInput}
                     type={inputTypeFor(f.typeName)}
                     value={values[f.name] ?? ''}
-                    onChange={e => set(f.name, toIso(e.target.value, f.typeName))}
+                    onChange={e => set(f.name, e.target.value)}
                     placeholder={placeholderFor(f.typeName, f.required)}
                     required={f.required}
                   />
