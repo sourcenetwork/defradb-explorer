@@ -202,6 +202,26 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
 
   const gqlSchema  = useGraphQLSchema()
 
+  // Object-type fields in views that were excluded from the table query (need sub-selection)
+  const viewNestedFields = useMemo(() => {
+    if (!viewMeta || !gqlSchema) return []
+    const queryType = gqlSchema.getQueryType()
+    const collField = queryType?.getFields()[collection]
+    if (!collField) return []
+    const collType = getNamedType(collField.type)
+    if (!('getFields' in collType)) return []
+    const SKIP = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
+    return Object.entries((collType as { getFields(): Record<string, { type: GraphQLOutputType }> }).getFields())
+      .filter(([name, field]) => !name.startsWith('_') && !SKIP.has(name) && 'getFields' in getNamedType(field.type))
+      .map(([name, field]) => {
+        const nestedType = getNamedType(field.type) as { getFields(): Record<string, { type: GraphQLOutputType }> }
+        const subFields = Object.entries(nestedType.getFields())
+          .filter(([fn, ff]) => !fn.startsWith('_') && !SKIP.has(fn) && !('getFields' in getNamedType(ff.type)))
+          .map(([fn]) => fn)
+        return { name, subFields }
+      })
+  }, [viewMeta, gqlSchema, collection])
+
   // Split into single-object relations (safe: fetch { _docID }) vs list/many relations
   // (unsafe in table: could return thousands of rows — excluded from column query).
   const { singleRelationFields, listRelationFields } = useMemo(() => {
@@ -270,7 +290,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
     const collType = getNamedType(collField.type)
     if (!('getFields' in collType)) return []
     return Object.values((collType as { getFields(): Record<string, { name: string; type: GraphQLOutputType }> }).getFields())
-      .filter(f => !f.name.startsWith('_') && !SKIP_FIELDS.has(f.name))
+      .filter(f => !f.name.startsWith('_') && !SKIP_FIELDS.has(f.name) && !('getFields' in getNamedType(f.type)))
       .map(f => ({ name: f.name, typeName: getNamedType(f.type).name, required: false }))
   }, [viewMeta, gqlSchema, collection])
 
@@ -300,8 +320,14 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
           const collType = getNamedType(collField.type)
           if ('getFields' in collType) {
             const SKIP = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY', 'GROUP'])
-            const fields = Object.keys((collType as { getFields(): Record<string, unknown> }).getFields())
-              .filter(f => !f.startsWith('_') && !SKIP.has(f))
+            const typeFields = (collType as { getFields(): Record<string, { type: GraphQLOutputType }> }).getFields()
+            const fields = Object.entries(typeFields)
+              .filter(([name, field]) => {
+                if (name.startsWith('_') || SKIP.has(name)) return false
+                // Exclude object types — they need sub-selection and aren't scalar view outputs
+                return !('getFields' in getNamedType(field.type))
+              })
+              .map(([name]) => name)
             if (fields.length > 0) return fields
           }
         }
@@ -463,6 +489,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
             formFields={formFields}
             relationFields={singleRelationFields}
             listRelationFields={listRelationFields}
+            viewNestedFields={viewNestedFields}
             hasDocID={hasDocID}
             onClose={() => setSelectedIdx(null)}
             onUpdate={(docID, values, original) => updateMut.mutateAsync({ docID, values, typeMap, original })}
@@ -949,13 +976,14 @@ function ListRelationField({ name, collection, docID }: { name: string; collecti
 
 type PanelMode = 'view' | 'history' | 'graph'
 
-function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
+function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, viewNestedFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
   doc:                Record<string, unknown>
   fields:             string[]
   collection:         string
   formFields:         FormField[]
   relationFields?:    Set<string>
   listRelationFields?: Set<string>
+  viewNestedFields?:  { name: string; subFields: string[] }[]
   hasDocID?:          boolean
   onClose:            () => void
   onUpdate:           (docID: string, values: FormValues, original: FormValues) => Promise<unknown>
@@ -1077,7 +1105,9 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
       {onOpenInQueryRunner && (
         <div className={styles.detailSecondaryBar}>
           <button className={styles.detailSecondaryBtn} onClick={() => {
-            const sel = fields.map(f => relationFields?.has(f) ? `${f} { _docID }` : f).join(' ')
+            const scalars = fields.map(f => relationFields?.has(f) ? `${f} { _docID }` : f).join(' ')
+            const nested  = viewNestedFields?.map(f => `${f.name} { ${f.subFields.join(' ')} }`).join(' ') ?? ''
+            const sel   = [scalars, nested].filter(Boolean).join(' ')
             const query = hasDocID && docID
               ? `{ ${collection}(filter: { _docID: { _eq: ${JSON.stringify(docID)} } }) { ${sel} } }`
               : `{ ${collection} { ${sel} } }`
@@ -1176,6 +1206,24 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
                 {listRelationFields && [...listRelationFields].map(f => (
                   <ListRelationField key={f} name={f} collection={collection} docID={docID} />
                 ))}
+                {viewNestedFields && viewNestedFields.length > 0 && (
+                  <>
+                    <div className={styles.detailSectionLabelRow} style={{ marginTop: 8 }}>
+                      <p className={styles.detailSectionLabel}>Nested fields</p>
+                    </div>
+                    {viewNestedFields.map(f => (
+                      <div key={f.name} className={styles.fieldGroup}>
+                        <div className={styles.fieldKeyRow}>
+                          <p className={styles.fieldKey}>{f.name}</p>
+                          <span className={styles.colsRelBadge}>nested</span>
+                        </div>
+                        <p className={styles.fieldVal} style={{ color: 'var(--gray-600)', fontSize: 11, fontStyle: 'italic' }}>
+                          not loaded — use Open in Query Runner
+                        </p>
+                      </div>
+                    ))}
+                  </>
+                )}
               </>
             )}
           </>

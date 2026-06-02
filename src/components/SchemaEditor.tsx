@@ -10,6 +10,7 @@ import { graphql as graphqlExt } from 'cm6-graphql'
 import { useConfig } from '../context/ConfigContext'
 import { useIntrospection } from '../hooks/useIntrospection'
 import { useCollections } from '../hooks/useCollections'
+import { useViews } from '../hooks/useViews'
 import { createCollection, patchCollection, sdlToCollectionPatchOps } from '../api/graphql'
 import { queryKeys } from '../lib/queryKeys'
 import type { CollectionDescription } from '../api/types'
@@ -224,20 +225,23 @@ interface Props {
 }
 
 const MIN_GUIDE  = 280
-const MAX_GUIDE  = 600
+const MAX_GUIDE  = () => Math.round(window.innerWidth * 0.75)
 
 export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) {
   const { config }    = useConfig()
   const queryClient   = useQueryClient()
   const storeMode                  = useUIStore(s => s.schemaEditorMode)
-  const schemaGuideWidth           = useUIStore(s => s.schemaGuideWidth)
-  const setSchemaGuideWidth        = useUIStore(s => s.setSchemaGuideWidth)
+  const schemaGuideWidth              = useUIStore(s => s.schemaGuideWidth)
+  const setSchemaGuideWidth           = useUIStore(s => s.setSchemaGuideWidth)
+  const schemaEditorPreviewHeight     = useUIStore(s => s.schemaEditorPreviewHeight)
+  const setSchemaEditorPreviewHeight  = useUIStore(s => s.setSchemaEditorPreviewHeight)
   const schemaEditorDraftCreate    = useUIStore(s => s.schemaEditorDraftCreate)
   const setSchemaEditorDraftCreate = useUIStore(s => s.setSchemaEditorDraftCreate)
   const schemaEditorDraftPatch     = useUIStore(s => s.schemaEditorDraftPatch)
   const setSchemaEditorDraftPatch  = useUIStore(s => s.setSchemaEditorDraftPatch)
   const { data: introspection } = useIntrospection()
   const { data: collections }   = useCollections()
+  const { data: views }         = useViews()
 
   // Honour initialMode on first mount; thereafter track store
   const [mode, setMode] = useState<'create' | 'patch'>(initialMode)
@@ -258,19 +262,16 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
     try { return sdlToCollectionPatchOps(sdl) } catch { return null }
   })()
 
-  const [previewHeight, setPreviewHeight] = useState(260)
-  const onResizePreview = useCallback((delta: number) => {
-    setPreviewHeight(prev => Math.max(80, Math.min(500, prev - delta)))
-  }, [])
 
   // User-defined type names for SDL completion
   const typeNamesRef = useRef<string[]>([])
   useEffect(() => {
     if (!introspection) return
+    const viewNames = new Set(views?.map(v => v.name) ?? [])
     typeNamesRef.current = introspection.__schema.types
-      .filter((t: IntrospectionType) => !HIDDEN_INTROSPECTION.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT')
+      .filter((t: IntrospectionType) => !HIDDEN_INTROSPECTION.has(t.name) && !t.name.startsWith('_') && t.kind === 'OBJECT' && !viewNames.has(t.name))
       .map((t: IntrospectionType) => t.name)
-  }, [introspection])
+  }, [introspection, views])
 
   // Stable completion extension — reads typeNamesRef and modeRef at completion time
   const modeRef = useRef(mode)
@@ -294,8 +295,15 @@ export default function SchemaEditor({ onDone, initialMode = 'create' }: Props) 
 const schemaGuideWidthRef = useRef(schemaGuideWidth)
   schemaGuideWidthRef.current = schemaGuideWidth
   const onResizeGuide = useCallback((delta: number) => {
-    setSchemaGuideWidth(Math.max(MIN_GUIDE, Math.min(MAX_GUIDE, schemaGuideWidthRef.current - delta)))
+    setSchemaGuideWidth(Math.max(MIN_GUIDE, Math.min(MAX_GUIDE(), schemaGuideWidthRef.current - delta)))
   }, [setSchemaGuideWidth])
+
+  const previewHeightRef = useRef(schemaEditorPreviewHeight)
+  previewHeightRef.current = schemaEditorPreviewHeight
+  const onResizePreview = useCallback((delta: number) => {
+    const maxH = Math.round(window.innerHeight * 0.75)
+    setSchemaEditorPreviewHeight(Math.max(80, Math.min(maxH, previewHeightRef.current - delta)))
+  }, [setSchemaEditorPreviewHeight])
 
   const { mutate, isPending, isError, error, reset } = useMutation({
     mutationFn: async () => {
@@ -366,7 +374,7 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
           {patchPreview !== null && (
             <>
               <ResizeHandle direction="vertical" onResize={onResizePreview} />
-              <div className={styles.patchPreviewPane} style={{ height: previewHeight }}>
+              <div className={styles.patchPreviewPane} style={{ height: schemaEditorPreviewHeight }}>
                 <div className={styles.patchPreviewPaneHeader}>
                   <span>JSON patch preview</span>
                   <PatchCopyBtn json={JSON.stringify(patchPreview, null, 2)} />

@@ -312,6 +312,22 @@
   letter-spacing: 0;
 }
 
+.mismatchChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-family: 'CommitMono', monospace;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #FF5F57;
+  background: rgba(255, 95, 87, 0.08);
+  border: 1px solid rgba(255, 95, 87, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: default;
+}
+
 .runQueryBtn {
   margin-left: auto;
   background: rgba(16, 203, 255, 0.08);

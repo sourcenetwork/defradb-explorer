@@ -6,6 +6,8 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { autocompletion, closeBrackets } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
 import { graphql as graphqlExt } from 'cm6-graphql'
+import { parse as parseGql } from 'graphql'
+import type { FieldNode } from 'graphql'
 import GraphQLEditor from '../components/GraphQLEditor'
 import { useViews, useCreateView, useDeleteView } from '../hooks/useViews'
 import { useCollections } from '../hooks/useCollections'
@@ -150,9 +152,58 @@ function stripBraces(q: string): string {
 }
 
 const MIN_GUIDE   = 280
-const MAX_GUIDE   = 600
+const MAX_GUIDE   = () => Math.round(window.innerWidth * 0.75)
 const MIN_SDL_H   = 80
 const DEFAULT_SDL_H = 220
+
+// Extract output field names + types from a GraphQL query string.
+// Respects aliases: `alias: field` → output name is `alias`.
+function parseQueryFields(
+  queryText: string,
+  introspection: { __schema: { types: IntrospectionType[] } } | undefined,
+): { name: string; typeName: string }[] {
+  try {
+    const bare = stripBraces(queryText.trim())
+    if (!bare.trim()) return []
+    const doc = parseGql(`{ ${bare} }`)
+    const op = doc.definitions[0]
+    if (!op || op.kind !== 'OperationDefinition') return []
+    const topField = op.selectionSet.selections.find((s): s is FieldNode => s.kind === 'Field')
+    if (!topField) return []
+    const collType = introspection?.__schema.types.find(
+      (t: IntrospectionType) => t.name === topField.name.value && t.kind === 'OBJECT'
+    )
+    return (topField.selectionSet?.selections ?? [])
+      .filter((s): s is FieldNode => s.kind === 'Field')
+      .filter(s => !s.name.value.startsWith('_'))
+      .map(s => {
+        const outputName   = s.alias?.value ?? s.name.value
+        const originalName = s.name.value
+        const field = (collType?.fields ?? []).find((f: IntrospectionField) => f.name === originalName)
+        let typeName = 'String'
+        if (field) {
+          let t: { name?: string | null; ofType?: unknown } = field.type
+          while ((t as { ofType?: unknown }).ofType) t = (t as { ofType: typeof t }).ofType
+          typeName = (t as { name?: string | null }).name ?? 'String'
+        }
+        return { name: outputName, typeName }
+      })
+  } catch {
+    return []
+  }
+}
+
+// Extract field names defined in the SDL type body.
+function parseSdlFieldNames(sdlText: string): string[] {
+  const match = sdlText.match(/\{([\s\S]*)\}/)
+  if (!match) return []
+  return match[1]
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#') && !l.startsWith('@') && !l.startsWith('}'))
+    .map(l => l.split(/[\s:]/)[0])
+    .filter(n => n && /^\w+$/.test(n))
+}
 
 export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const viewDraftSdl       = useUIStore(s => s.viewDraftSdl)
@@ -161,6 +212,8 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const setViewDraftQuery  = useUIStore(s => s.setViewDraftQuery)
   const viewGuideWidth     = useUIStore(s => s.viewGuideWidth)
   const setViewGuideWidth  = useUIStore(s => s.setViewGuideWidth)
+  const sdlHeight          = useUIStore(s => s.viewSdlHeight)
+  const setViewSdlHeight   = useUIStore(s => s.setViewSdlHeight)
 
   const [sdl, setSdlRaw]        = useState(viewDraftSdl)
   const [query, setQueryRaw]    = useState(viewDraftQuery)
@@ -171,7 +224,6 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const [testResult, setTestResult] = useState<string | null>(null)
   const [testError, setTestError]   = useState<string | null>(null)
   const [testing, setTesting]       = useState(false)
-  const [sdlHeight, setSdlHeight]   = useState(DEFAULT_SDL_H)
   const sdlRef         = useRef<HTMLDivElement>(null)
 
   const sdlViewRef     = useRef<EditorView | null>(null)
@@ -184,17 +236,39 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
   const { data: introspection } = useIntrospection()
   const schema = useGraphQLSchema()
 
+  // Derive output fields from the query AST — updates autocomplete and mismatch detection
+  const queryFields = useMemo(
+    () => parseQueryFields(query, introspection),
+    [query, introspection],
+  )
+  useEffect(() => {
+    if (queryFields.length > 0) sdlFieldsRef.current = queryFields
+  }, [queryFields])
+
+  const sdlFieldNames = useMemo(() => parseSdlFieldNames(sdl), [sdl])
+
+  const mismatches = useMemo(() => {
+    if (!queryFields.length || !sdlFieldNames.length) return null
+    const queryNames = new Set(queryFields.map(f => f.name))
+    const inSdlNotQuery = sdlFieldNames.filter(n => !queryNames.has(n))
+    const inQueryNotSdl = queryFields.map(f => f.name).filter(n => !new Set(sdlFieldNames).has(n))
+    if (!inSdlNotQuery.length && !inQueryNotSdl.length) return null
+    return { inSdlNotQuery, inQueryNotSdl }
+  }, [queryFields, sdlFieldNames])
+
   // Keep refs up-to-date so closures in effects always read current values
   const viewGuideWidthRef = useRef(viewGuideWidth)
   viewGuideWidthRef.current = viewGuideWidth
 
   const onResizeGuide = useCallback((delta: number) => {
-    setViewGuideWidth(Math.max(MIN_GUIDE, Math.min(MAX_GUIDE, viewGuideWidthRef.current - delta)))
+    setViewGuideWidth(Math.max(MIN_GUIDE, Math.min(MAX_GUIDE(), viewGuideWidthRef.current - delta)))
   }, [setViewGuideWidth])
 
+  const sdlHeightRef = useRef(sdlHeight)
+  sdlHeightRef.current = sdlHeight
   const onResizeEditors = useCallback((delta: number) => {
-    setSdlHeight(prev => Math.max(MIN_SDL_H, prev + delta))
-  }, [])
+    setViewSdlHeight(Math.max(MIN_SDL_H, Math.min(Math.round(window.innerHeight * 0.65), sdlHeightRef.current + delta)))
+  }, [setViewSdlHeight])
 
   // Populate type name list from introspection for SDL completions
   useEffect(() => {
@@ -320,6 +394,11 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
             <div className={styles.editorLabel}>
               Output type (SDL)
               {viewName && <span className={styles.editorLabelName}>{viewName}</span>}
+              {mismatches?.inSdlNotQuery.map(n => (
+                <span key={n} className={styles.mismatchChip} title="Field not returned by the underlying query">
+                  {n} ✕
+                </span>
+              ))}
             </div>
             <div className={styles.editorBox} ref={sdlRef} />
           </div>
@@ -617,7 +696,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 // ── Root ─────────────────────────────────────────────────────────────────────
 
 const MIN_SIDEBAR  = 160
-const MAX_SIDEBAR  = 400
+const MAX_SIDEBAR  = () => Math.round(window.innerWidth * 0.5)
 
 export interface ViewsViewHandle {
   openCreate:  () => void
@@ -637,7 +716,7 @@ const ViewsView = forwardRef<ViewsViewHandle>(function ViewsView(_, ref) {
   }))
 
   const onResizeSidebar = useCallback((delta: number) => {
-    setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR, sidebarWidth + delta)))
+    setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR(), sidebarWidth + delta)))
   }, [setSidebarWidth, sidebarWidth])
 
   const selected = views.find(v => v.name === selectedName) ?? null

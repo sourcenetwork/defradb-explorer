@@ -42,7 +42,7 @@ interface UIState {
   querySchemaWidth: number
   setQuerySchemaWidth: (w: number) => void
 
-  // Resizable panel widths
+  // Resizable panel widths/heights
   schemaGuideWidth: number
   setSchemaGuideWidth: (w: number) => void
   schemaSidebarWidth: number
@@ -51,6 +51,10 @@ interface UIState {
   setViewGuideWidth: (w: number) => void
   viewsSidebarWidth: number
   setViewsSidebarWidth: (w: number) => void
+  schemaEditorPreviewHeight: number
+  setSchemaEditorPreviewHeight: (h: number) => void
+  viewSdlHeight: number
+  setViewSdlHeight: (h: number) => void
 
   // Draft inputs — persisted so navigating away doesn't lose work
   viewDraftSdl: string
@@ -107,6 +111,10 @@ export const useUIStore = create<UIState>()(
       setViewGuideWidth: (w) => set({ viewGuideWidth: w }),
       viewsSidebarWidth: 220,
       setViewsSidebarWidth: (w) => set({ viewsSidebarWidth: w }),
+      schemaEditorPreviewHeight: 260,
+      setSchemaEditorPreviewHeight: (h) => set({ schemaEditorPreviewHeight: h }),
+      viewSdlHeight: 220,
+      setViewSdlHeight: (h) => set({ viewSdlHeight: h }),
 
       viewDraftSdl: '',
       setViewDraftSdl: (v) => set({ viewDraftSdl: v }),
@@ -120,26 +128,28 @@ export const useUIStore = create<UIState>()(
     {
       name: 'defradb:ui',
       partialize: (state) => ({
-        activeTab:           VALID_TABS.has(state.activeTab) ? state.activeTab : 'dashboard',
-        activeCollection:    state.activeCollection,
-        schemaSubView:       VALID_SCHEMA_SUB.has(state.schemaSubView) ? state.schemaSubView : 'table',
-        schemaEditorMode:    state.schemaEditorMode === 'patch' ? 'patch' : 'create',
-        selectedSchemaType:  state.selectedSchemaType,
-        commitsDocID:        state.commitsDocID,
-        commitsViewMode:     state.commitsViewMode,
-        collectionsPageSize: state.collectionsPageSize,
-        queryShowSchema:     state.queryShowSchema,
-        queryVarsOpen:       state.queryVarsOpen,
-        queryVarsHeight:     state.queryVarsHeight,
-        querySchemaWidth:    state.querySchemaWidth,
-        schemaGuideWidth:         state.schemaGuideWidth,
-        schemaSidebarWidth:       state.schemaSidebarWidth,
-        viewGuideWidth:           state.viewGuideWidth,
-        viewsSidebarWidth:        state.viewsSidebarWidth,
-        viewDraftSdl:             state.viewDraftSdl,
-        viewDraftQuery:           state.viewDraftQuery,
-        schemaEditorDraftCreate:  state.schemaEditorDraftCreate,
-        schemaEditorDraftPatch:   state.schemaEditorDraftPatch,
+        activeTab:                    VALID_TABS.has(state.activeTab) ? state.activeTab : 'dashboard',
+        activeCollection:             state.activeCollection,
+        schemaSubView:                VALID_SCHEMA_SUB.has(state.schemaSubView) ? state.schemaSubView : 'table',
+        schemaEditorMode:             state.schemaEditorMode === 'patch' ? 'patch' : 'create',
+        selectedSchemaType:           state.selectedSchemaType,
+        commitsDocID:                 state.commitsDocID,
+        commitsViewMode:              state.commitsViewMode,
+        collectionsPageSize:          state.collectionsPageSize,
+        queryShowSchema:              state.queryShowSchema,
+        queryVarsOpen:                state.queryVarsOpen,
+        queryVarsHeight:              state.queryVarsHeight,
+        querySchemaWidth:             state.querySchemaWidth,
+        schemaGuideWidth:             state.schemaGuideWidth,
+        schemaSidebarWidth:           state.schemaSidebarWidth,
+        viewGuideWidth:               state.viewGuideWidth,
+        viewsSidebarWidth:            state.viewsSidebarWidth,
+        schemaEditorPreviewHeight:    state.schemaEditorPreviewHeight,
+        viewSdlHeight:                state.viewSdlHeight,
+        viewDraftSdl:                 state.viewDraftSdl,
+        viewDraftQuery:               state.viewDraftQuery,
+        schemaEditorDraftCreate:      state.schemaEditorDraftCreate,
+        schemaEditorDraftPatch:       state.schemaEditorDraftPatch,
       }),
     },
   ),

@@ -36,7 +36,7 @@ function resolveTypeName(field: IntrospectionField): string {
 }
 
 const MIN_SIDEBAR  = 180
-const MAX_SIDEBAR  = 480
+const MAX_SIDEBAR  = () => Math.round(window.innerWidth * 0.5)
 
 const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
   const { data, isLoading, isError } = useIntrospection()
@@ -58,7 +58,7 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
   }))
 
   const onResizeSidebar = useCallback((delta: number) => {
-    setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR, sidebarWidth + delta)))
+    setSidebarWidth(Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR(), sidebarWidth + delta)))
   }, [setSidebarWidth, sidebarWidth])
 
   const userTypes = useMemo((): IntrospectionType[] => {
