@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useConfig } from '../context/ConfigContext'
 import { executeGraphQL, subscribeGraphQL } from '../api/graphql'
 import { useGraphQLSchema } from '../hooks/useGraphQLSchema'
-import { useCollections } from '../hooks/useCollections'
+import { useCollections, useCollectionViewNames } from '../hooks/useCollections'
 import type { GraphQLResponse } from '../api/types'
 import GraphQLEditor from '../components/GraphQLEditor'
 import type { GraphQLEditorHandle } from '../components/GraphQLEditor'
@@ -226,6 +226,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   const editorRef  = useRef<GraphQLEditorHandle>(null)
   const { data: collections } = useCollections()
   const knownCollections = useMemo(() => new Set(collections?.map(c => c.name) ?? []), [collections])
+  const { data: viewNames } = useCollectionViewNames()
 
   // ── Subscription abort map ─────────────────────────────────────────────────
 
@@ -465,6 +466,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
               query={activeTab.query}
               onQueryChange={setQuery}
               cursorOffset={cursorOffset}
+              viewNames={viewNames}
             />
           </div>
           <ResizeHandle direction="horizontal" onResize={onResizeSchema} />

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
 import { EditorView, keymap, placeholder, lineNumbers, drawSelection } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
@@ -192,6 +192,7 @@ function GraphQLEditor({ value, onChange, onRun, schema, onCursorOffset }, ref) 
           },
         }),
         closeBrackets(),
+        bracketMatching(),
         dashboardTheme,
         EditorView.updateListener.of(update => {
           if (update.docChanged) onChangeRef.current(update.state.doc.toString())

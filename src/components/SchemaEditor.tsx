@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
@@ -166,6 +166,7 @@ function SDLEditor({ value, onChange, extra = [] }: {
         syntaxHighlighting(highlight),
         ...sdlFieldNameHighlighter(),
         closeBrackets(),
+        bracketMatching(),
         editorTheme,
         EditorView.lineWrapping,
         EditorView.updateListener.of(u => {

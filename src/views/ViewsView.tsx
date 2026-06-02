@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
 import { EditorView, keymap, lineNumbers, drawSelection, placeholder } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, bracketMatching } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete'
 import { tags } from '@lezer/highlight'
@@ -73,6 +73,7 @@ function makeEditor(container: HTMLElement, doc: string, ph: string, onChange: (
         drawSelection(),
         lineNumbers(),
         closeBrackets(),
+        bracketMatching(),
         syntaxHighlighting(highlight),
         ...sdlFieldNameHighlighter(),
         editorTheme,
