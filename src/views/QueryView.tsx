@@ -449,6 +449,12 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
     : null
   const resultText = result ? JSON.stringify(result, null, 2) : ''
   const hasError   = !!(result?.errors || isError)
+  const docMap = useMemo(() => {
+    if (!onOpenInCollections || !result) return undefined
+    const m = new Map<string, string>()
+    for (const { collection, docID } of extractResultDocs(result, knownCollections)) m.set(docID, collection)
+    return m
+  }, [result, knownCollections, onOpenInCollections])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -661,11 +667,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
               <JsonViewer
                 value={resultText}
                 isError={hasError}
-                docMap={onOpenInCollections ? (() => {
-                  const m = new Map<string, string>()
-                  extractResultDocs(result, knownCollections).forEach(({ collection, docID }) => m.set(docID, collection))
-                  return m
-                })() : undefined}
+                docMap={docMap}
                 onOpenDoc={onOpenInCollections}
               />
             ) : (

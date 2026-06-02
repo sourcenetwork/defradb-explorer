@@ -117,7 +117,10 @@ const CollectionsView = forwardRef<CollectionsViewHandle, Props>(function Collec
   const { data: views } = useViews()
   const browserRef = useRef<CollectionBrowserHandle>(null)
 
-  const knownNames = (collections || views) ? new Set([...(collections ?? []).map(c => c.name), ...(views ?? []).map(v => v.name)]) : null
+  const knownNames = useMemo(
+    () => (collections || views) ? new Set([...(collections ?? []).map(c => c.name), ...(views ?? []).map(v => v.name)]) : null,
+    [collections, views],
+  )
   const collectionValid = !collection || !knownNames || knownNames.has(collection)
   const effectiveCollection = collectionValid
     ? (collection ?? collections?.[0]?.name ?? null)
@@ -343,6 +346,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const { data: totalCount = 0 } = useDocumentCount(collection, search, searchField, searchFieldType, effectiveOp, relationFields)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [showNewDoc, setShowNewDoc]   = useState(false)
+  const [toast, setToast]             = useState<string | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
@@ -516,8 +520,20 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
           onSubmit={async (values) => {
             await createMut.mutateAsync({ values, typeMap })
             setShowNewDoc(false)
+            setToast('Document created')
+            setTimeout(() => setToast(null), 2500)
           }}
         />
+      )}
+      {toast && (
+        <div className={styles.toast}>
+          <svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+            <circle cx={7} cy={7} r={6} fill="var(--green)" opacity={0.2}/>
+            <circle cx={7} cy={7} r={6} stroke="var(--green)" strokeWidth={1.2}/>
+            <path d="M4.5 7.2l1.8 1.8 3.2-3.6" stroke="var(--green-btn)" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {toast}
+        </div>
       )}
     </div>
   )
@@ -1026,6 +1042,36 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   }
 
   const { data: commits, isLoading: histLoading, error: histError, refetch: refetchCommits } = useDocumentCommits(docID)
+
+  const commitRows = useMemo(() => {
+    if (!commits) return null
+    const byHeight = new Map<number, typeof commits>()
+    for (const c of commits) {
+      if (!byHeight.has(c.height)) byHeight.set(c.height, [])
+      byHeight.get(c.height)!.push(c)
+    }
+    const compositeCidByHeight = new Map<number, string>()
+    for (const [h, group] of byHeight) {
+      const comp = group.find(c => c.fieldName === '_C')
+      if (comp) compositeCidByHeight.set(h, comp.cid)
+    }
+    const maxHeight = Math.max(...byHeight.keys())
+    return [...byHeight.entries()]
+      .sort(([a], [b]) => b - a)
+      .map(([height, group]) => {
+        const composite    = group.find(c => c.fieldName === '_C')
+        const cid          = composite?.cid ?? group[0]?.cid ?? ''
+        const parentCID    = compositeCidByHeight.get(height - 1) ?? null
+        const changedLinks = composite?.links.filter(l => l.fieldName && l.fieldName !== '_C') ?? []
+        const shortCid     = cid.length > 20 ? `${cid.slice(0, 10)}…${cid.slice(-6)}` : cid
+        const shortParent  = parentCID && parentCID.length > 16 ? `${parentCID.slice(0, 8)}…${parentCID.slice(-4)}` : parentCID
+        const isHead   = height === maxHeight
+        const isRoot   = height === 1
+        const isMerge  = (byHeight.get(height - 1)?.filter(c => c.fieldName === '_C').length ?? 0) > 1
+        return { height, cid, parentCID, changedLinks, shortCid, shortParent, isHead, isRoot, isMerge }
+      })
+  }, [commits])
+
   const { data: fullDoc, refetch: refetchDoc } = useDocumentById(collection, docID, fields, relationFields)
   const currentVersion = commits?.[0]?.height ?? null
 
@@ -1248,70 +1294,46 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
             {!histLoading && !histError && commits?.length === 0 && (
               <p className={styles.histEmpty}>No commits found.</p>
             )}
-            {commits && (() => {
-              const byHeight = new Map<number, typeof commits>()
-              for (const c of commits) {
-                if (!byHeight.has(c.height)) byHeight.set(c.height, [])
-                byHeight.get(c.height)!.push(c)
-              }
-              const compositeCidByHeight = new Map<number, string>()
-              for (const [h, group] of byHeight) {
-                const comp = group.find(c => c.fieldName === '_C')
-                if (comp) compositeCidByHeight.set(h, comp.cid)
-              }
-              const maxHeight = Math.max(...byHeight.keys())
-              return [...byHeight.entries()]
-                .sort(([a], [b]) => b - a)
-                .map(([height, group]) => {
-                  const composite    = group.find(c => c.fieldName === '_C')
-                  const cid          = composite?.cid ?? group[0]?.cid ?? ''
-                  const parentCID    = compositeCidByHeight.get(height - 1) ?? null
-                  const changedLinks = composite?.links.filter(l => l.fieldName && l.fieldName !== '_C') ?? []
-                  const shortCid     = cid.length > 20 ? `${cid.slice(0, 10)}…${cid.slice(-6)}` : cid
-                  const shortParent  = parentCID && parentCID.length > 16 ? `${parentCID.slice(0, 8)}…${parentCID.slice(-4)}` : parentCID
-                  const isOpen   = openCids.has(cid)
-                  const isHead   = height === maxHeight
-                  const isRoot   = height === 1
-                  const isMerge  = (byHeight.get(height - 1)?.filter(c => c.fieldName === '_C').length ?? 0) > 1
-                  return (
-                    <div key={height} className={`${styles.histVersion} ${isOpen ? styles.histVersionOpen : ''}`} onClick={() => toggleCid(cid)}>
-                      <div className={styles.histVersionHead}>
-                        <span className={styles.histHeight}>v{height}</span>
-                        {isHead  && <span className={styles.tagHead}>head</span>}
-                        {isMerge && <span className={styles.tagMerge}>merge</span>}
-                        {isRoot  && <span className={styles.tagRoot}>root</span>}
-                        <div className={styles.histCidRow}>
-                          <span className={styles.histCid} title={cid}>{shortCid}</span>
-                          <span onClick={e => e.stopPropagation()}>
-                            <HistCopyButton text={cid} />
-                          </span>
-                        </div>
-                        {shortParent && (
-                          <span className={styles.histParent} title={parentCID ?? ''}>← {shortParent}</span>
-                        )}
-                        <ChevronDown size={12} className={`${styles.histChevron} ${isOpen ? styles.histChevronOpen : ''}`} />
-                      </div>
-                      {changedLinks.length > 0 && (
-                        <div className={styles.histFieldTags}>
-                          {changedLinks.map(l => (
-                            <span key={l.cid} className={`${styles.histField} ${styles.histFieldChanged}`} title={l.cid}>
-                              {l.fieldName}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {isOpen && (
-                        <VersionSnapshot
-                          collection={collection}
-                          cid={cid}
-                          parentCid={parentCID}
-                          changedFields={new Set(changedLinks.map(l => l.fieldName ?? ''))}
-                        />
-                      )}
+            {commitRows?.map(({ height, cid, parentCID, changedLinks, shortCid, shortParent, isHead, isRoot, isMerge }) => {
+              const isOpen = openCids.has(cid)
+              return (
+                <div key={height} className={`${styles.histVersion} ${isOpen ? styles.histVersionOpen : ''}`} onClick={() => toggleCid(cid)}>
+                  <div className={styles.histVersionHead}>
+                    <span className={styles.histHeight}>v{height}</span>
+                    {isHead  && <span className={styles.tagHead}>head</span>}
+                    {isMerge && <span className={styles.tagMerge}>merge</span>}
+                    {isRoot  && <span className={styles.tagRoot}>root</span>}
+                    <div className={styles.histCidRow}>
+                      <span className={styles.histCid} title={cid}>{shortCid}</span>
+                      <span onClick={e => e.stopPropagation()}>
+                        <HistCopyButton text={cid} />
+                      </span>
                     </div>
-                  )
-                })
-            })()}
+                    {shortParent && (
+                      <span className={styles.histParent} title={parentCID ?? ''}>← {shortParent}</span>
+                    )}
+                    <ChevronDown size={12} className={`${styles.histChevron} ${isOpen ? styles.histChevronOpen : ''}`} />
+                  </div>
+                  {changedLinks.length > 0 && (
+                    <div className={styles.histFieldTags}>
+                      {changedLinks.map(l => (
+                        <span key={l.cid} className={`${styles.histField} ${styles.histFieldChanged}`} title={l.cid}>
+                          {l.fieldName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {isOpen && (
+                    <VersionSnapshot
+                      collection={collection}
+                      cid={cid}
+                      parentCid={parentCID}
+                      changedFields={new Set(changedLinks.map(l => l.fieldName ?? ''))}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </>
         )}
 
