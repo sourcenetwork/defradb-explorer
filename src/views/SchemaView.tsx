@@ -36,6 +36,12 @@ function resolveTypeName(field: IntrospectionField): string {
   return wrappers.includes('list') ? `[${name}]` : name
 }
 
+function resolveBaseTypeName(field: IntrospectionField): string {
+  let t = field.type
+  while (t.kind === 'NON_NULL' || t.kind === 'LIST') t = t.ofType!
+  return t.name ?? t.kind
+}
+
 const MIN_SIDEBAR  = 180
 const MAX_SIDEBAR  = () => Math.round(window.innerWidth * 0.5)
 
@@ -88,6 +94,11 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
       .filter(t => !HIDDEN_TYPES.has(t.name) && !t.name.startsWith('_') && t.kind === 'ENUM')
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [data])
+
+  const navigableTypeNames = useMemo(
+    () => new Set([...userTypes, ...enumTypes].map(t => t.name)),
+    [userTypes, enumTypes],
+  )
 
   const selected = useMemo(() => {
     const name = activeType ?? userTypes[0]?.name
@@ -274,14 +285,22 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
                   </thead>
                   <tbody>
                     {selected.fields.map(f => {
-                      const isRequired = f.type.kind === 'NON_NULL'
-                      const baseKind = getBaseKind(f.type)
-                      const isRelation = baseKind === 'OBJECT'
+                      const isRequired  = f.type.kind === 'NON_NULL'
+                      const baseKind    = getBaseKind(f.type)
+                      const isRelation  = baseKind === 'OBJECT' || baseKind === 'ENUM'
+                      const baseName    = resolveBaseTypeName(f)
+                      const navigable   = navigableTypeNames.has(baseName)
                       return (
                         <tr key={f.name}>
                           <td className={styles.fieldName}>{f.name}</td>
                           <td className={`${styles.fieldType} ${isRelation ? styles.fieldTypeRelation : ''}`}>
-                            {resolveTypeName(f)}
+                            {navigable ? (
+                              <button className={styles.fieldTypeLink} onClick={() => setActiveType(baseName)}>
+                                {resolveTypeName(f)}
+                              </button>
+                            ) : (
+                              resolveTypeName(f)
+                            )}
                           </td>
                           <td className={isRequired ? styles.fieldRequired : styles.fieldOptional}>
                             {isRequired ? 'yes' : 'no'}
