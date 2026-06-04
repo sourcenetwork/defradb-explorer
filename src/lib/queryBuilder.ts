@@ -158,9 +158,9 @@ export function getSelectedFieldsForType(
   query: string,
   typeName: string,
   schema: GraphQLSchema,
+  scopeToFieldName?: string,
 ): Set<string> {
   try {
-    // Use TypeInfo so this works at any nesting depth (not just root-level return types)
     const doc = parse(query)
     const typeInfo = new TypeInfo(schema)
     const selected = new Set<string>()
@@ -172,6 +172,7 @@ export function getSelectedFieldsForType(
           const type = typeInfo.getType()
           if (!type) return
           if (getNamedType(type as GraphQLType).name !== typeName) return
+          if (scopeToFieldName && node.name.value !== scopeToFieldName) return
           for (const inner of node.selectionSet.selections) {
             if (inner.kind === Kind.FIELD) selected.add(inner.name.value)
           }
@@ -250,13 +251,14 @@ export function toggleFieldInQuery(
   typeName: string,
   fieldName: string,
   schema: GraphQLSchema,
+  scopeToFieldName?: string,
 ): string {
-  const selected = getSelectedFieldsForType(query, typeName, schema)
+  const selected = getSelectedFieldsForType(query, typeName, schema, scopeToFieldName)
   const adding   = !selected.has(fieldName)
 
   const rootQueryFields = schema.getQueryType()?.getFields() ?? {}
 
-  const rootFieldName = Object.keys(rootQueryFields).find(k =>
+  const rootFieldName = scopeToFieldName ?? Object.keys(rootQueryFields).find(k =>
     getNamedType(rootQueryFields[k].type).name === typeName
   ) ?? null
 
@@ -273,6 +275,7 @@ export function toggleFieldInQuery(
           const type = typeInfoForToggle.getType()
           if (!type) return
           if (getNamedType(type as GraphQLType).name !== typeName) return
+          if (scopeToFieldName && node.name.value !== scopeToFieldName) return
           targetNode = node
         },
       },

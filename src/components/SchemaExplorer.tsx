@@ -223,7 +223,7 @@ function OperationPage({
     ? Object.values(returnType.getFields()).filter(f => !AGGREGATE_NAMES.has(f.name))
     : []
   const inQuery     = isRootFieldInQuery(query, field.name)
-  const selected    = getSelectedFieldsForType(query, returnType.name, schema)
+  const selected    = getSelectedFieldsForType(query, returnType.name, schema, field.name)
   const activeArgs  = getArgsForRootField(query, field.name)
   const visibleArgs = field.args.filter(a => !a.name.startsWith('_'))
 
@@ -301,7 +301,7 @@ function OperationPage({
                 const toToggle = allSelected
                   ? returnFields.filter(f => selected.has(f.name))
                   : returnFields.filter(f => !selected.has(f.name))
-                const next = toToggle.reduce((q, f) => toggleFieldInQuery(q, returnType.name, f.name, schema), query)
+                const next = toToggle.reduce((q, f) => toggleFieldInQuery(q, returnType.name, f.name, schema, field.name), query)
                 onQueryChange(next)
               }}
             >
@@ -317,7 +317,7 @@ function OperationPage({
                 name={f.name}
                 typeName={tn}
                 selected={selected.has(f.name)}
-                onToggle={() => onQueryChange(toggleFieldInQuery(query, returnType.name, f.name, schema))}
+                onToggle={() => onQueryChange(toggleFieldInQuery(query, returnType.name, f.name, schema, field.name))}
                 onNavigateField={() => onNavigateField(returnType.name, f.name)}
                 disabled={!inQuery}
               />
