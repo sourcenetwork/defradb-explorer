@@ -24,8 +24,12 @@ const OPERATORS_BY_TYPE: Record<string, string[]> = {
   String:   ['_ilike', '_nilike', '_like', '_nlike', '_eq', '_neq'],
   Int:      ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
   Float:    ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
+  Float32:  ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
+  Float64:  ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
   Boolean:  ['_eq', '_neq'],
   DateTime: ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
+  Blob:     ['_eq', '_neq'],
+  JSON:     ['_eq', '_neq'],
 }
 
 function FieldValue({ value }: { value: unknown }) {
@@ -826,12 +830,12 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
             onChange={e => onFilterChange(e.target.value)}
           />
           {showWildcardHint && <span className={styles.searchWildcard}>%</span>}
-          {filter && (
-            <button className={styles.searchClear} onClick={() => onFilterChange('')} aria-label="Clear search">
-              <X size={8} />
-            </button>
-          )}
         </div>
+        {filter && (
+          <button className={styles.searchClear} onClick={() => onFilterChange('')} aria-label="Clear filter">
+            Clear
+          </button>
+        )}
       </div>
       <div className={styles.toolbarSep} />
       <div className={styles.colsWrap} ref={colsRef}>
