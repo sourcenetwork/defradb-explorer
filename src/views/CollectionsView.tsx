@@ -351,6 +351,7 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [showNewDoc, setShowNewDoc]   = useState(false)
   const [toast, setToast]             = useState<string | null>(null)
+  const [detailWidth, setDetailWidth] = useState(() => Math.round(window.innerWidth / 2))
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
@@ -509,6 +510,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
             updatePending={updateMut.isPending}
             deletePending={deleteMut.isPending}
             onOpenInQueryRunner={onOpenInQueryRunner}
+            panelWidth={detailWidth}
+            onPanelWidthChange={setDetailWidth}
           />
         )}
       </div>  {/* split */}
@@ -998,7 +1001,7 @@ function ListRelationField({ name, collection, docID }: { name: string; collecti
 
 type PanelMode = 'view' | 'history' | 'graph'
 
-function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, viewNestedFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
+function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, viewNestedFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner, panelWidth, onPanelWidthChange }: {
   doc:                Record<string, unknown>
   fields:             string[]
   collection:         string
@@ -1013,6 +1016,8 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   updatePending:      boolean
   deletePending:      boolean
   onOpenInQueryRunner?: (query: string) => void
+  panelWidth:         number
+  onPanelWidthChange: (w: number) => void
 }) {
   const docID = String(doc._docID ?? '')
   const [mode, setMode]                 = useState<PanelMode>('view')
@@ -1021,7 +1026,6 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [mutErr, setMutErr]               = useState<string | null>(null)
   const [openCids, setOpenCids]           = useState<Set<string>>(new Set())
-  const [panelWidth, setPanelWidth]       = useState(() => Math.round(window.innerWidth / 2))
   const panelRef = useRef<HTMLElement>(null)
 
   function startPanelResize(e: React.MouseEvent) {
@@ -1030,7 +1034,7 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
     const startWidth = panelWidth
     const onMove = (ev: MouseEvent) => {
       const containerW = (panelRef.current?.offsetParent as HTMLElement)?.offsetWidth ?? window.innerWidth - 120
-      setPanelWidth(Math.max(320, Math.min(containerW - 8, startWidth - (ev.clientX - startX))))
+      onPanelWidthChange(Math.max(320, Math.min(containerW - 8, startWidth - (ev.clientX - startX))))
     }
     const onUp   = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
     window.addEventListener('mousemove', onMove)
