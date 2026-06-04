@@ -351,7 +351,10 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [showNewDoc, setShowNewDoc]   = useState(false)
   const [toast, setToast]             = useState<string | null>(null)
-  const [detailWidth, setDetailWidth] = useState(() => Math.round(window.innerWidth / 2))
+  const storedDetailWidth    = useUIStore(s => s.collectionsDetailWidth)
+  const setStoredDetailWidth = useUIStore(s => s.setCollectionsDetailWidth)
+  const detailWidth    = storedDetailWidth || Math.round(window.innerWidth / 2)
+  const setDetailWidth = setStoredDetailWidth
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
