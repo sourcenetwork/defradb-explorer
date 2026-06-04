@@ -55,6 +55,8 @@ interface UIState {
   setSchemaEditorPreviewHeight: (h: number) => void
   viewSdlHeight: number
   setViewSdlHeight: (h: number) => void
+  collectionsDetailWidth: number
+  setCollectionsDetailWidth: (w: number) => void
 
   // Draft inputs — persisted so navigating away doesn't lose work
   viewDraftSdl: string
@@ -115,6 +117,8 @@ export const useUIStore = create<UIState>()(
       setSchemaEditorPreviewHeight: (h) => set({ schemaEditorPreviewHeight: h }),
       viewSdlHeight: 220,
       setViewSdlHeight: (h) => set({ viewSdlHeight: h }),
+      collectionsDetailWidth: 0,
+      setCollectionsDetailWidth: (w) => set({ collectionsDetailWidth: w }),
 
       viewDraftSdl: '',
       setViewDraftSdl: (v) => set({ viewDraftSdl: v }),
@@ -146,6 +150,7 @@ export const useUIStore = create<UIState>()(
         viewsSidebarWidth:            state.viewsSidebarWidth,
         schemaEditorPreviewHeight:    state.schemaEditorPreviewHeight,
         viewSdlHeight:                state.viewSdlHeight,
+        collectionsDetailWidth:       state.collectionsDetailWidth,
         viewDraftSdl:                 state.viewDraftSdl,
         viewDraftQuery:               state.viewDraftQuery,
         schemaEditorDraftCreate:      state.schemaEditorDraftCreate,

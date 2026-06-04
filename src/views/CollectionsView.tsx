@@ -24,8 +24,12 @@ const OPERATORS_BY_TYPE: Record<string, string[]> = {
   String:   ['_ilike', '_nilike', '_like', '_nlike', '_eq', '_neq'],
   Int:      ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
   Float:    ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
+  Float32:  ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
+  Float64:  ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
   Boolean:  ['_eq', '_neq'],
   DateTime: ['_eq', '_neq', '_gt', '_gte', '_lt', '_lte'],
+  Blob:     ['_eq', '_neq'],
+  JSON:     ['_eq', '_neq'],
 }
 
 function FieldValue({ value }: { value: unknown }) {
@@ -347,6 +351,10 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [showNewDoc, setShowNewDoc]   = useState(false)
   const [toast, setToast]             = useState<string | null>(null)
+  const storedDetailWidth    = useUIStore(s => s.collectionsDetailWidth)
+  const setStoredDetailWidth = useUIStore(s => s.setCollectionsDetailWidth)
+  const detailWidth    = storedDetailWidth || Math.round(window.innerWidth / 2)
+  const setDetailWidth = setStoredDetailWidth
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
@@ -421,6 +429,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
         onViewSchema={onViewSchema}
         onRefreshView={viewMeta?.is_materialized ? () => refreshMut.mutate(collection, { onSuccess: () => refetch() }) : undefined}
         refreshPending={refreshMut.isPending}
+        onExport={handleExport}
+        onNewDocument={() => setShowNewDoc(true)}
       />
       <Toolbar
         filter={filter}
@@ -505,6 +515,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
             updatePending={updateMut.isPending}
             deletePending={deleteMut.isPending}
             onOpenInQueryRunner={onOpenInQueryRunner}
+            panelWidth={detailWidth}
+            onPanelWidthChange={setDetailWidth}
           />
         )}
       </div>  {/* split */}
@@ -614,12 +626,14 @@ function IndexesBar({ collection }: { collection: string }) {
 
 // ── Stats row ─────────────────────────────────────────────────────────────────
 
-function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMaterialized, onViewSchema, onRefreshView, refreshPending }: {
+function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMaterialized, onViewSchema, onRefreshView, refreshPending, onExport, onNewDocument }: {
   collection: string; count: number; fieldCount: number; isBranchable?: boolean
   isView?: boolean; isMaterialized?: boolean
   onViewSchema?: (name: string) => void
   onRefreshView?: () => void
   refreshPending?: boolean
+  onExport?: () => void
+  onNewDocument?: () => void
 }) {
   return (
     <div className={styles.statsRow}>
@@ -650,7 +664,7 @@ function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMater
           </span>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
         {onRefreshView && (
           <button className={styles.refreshViewBtn} onClick={onRefreshView} disabled={refreshPending}>
             <RotateCw size={10} />
@@ -661,6 +675,14 @@ function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMater
           <button className={styles.viewSchemaBtn} onClick={() => onViewSchema(collection)}>
             View schema
             <ArrowRight size={10} />
+          </button>
+        )}
+        {onExport && (
+          <button className={styles.statsActionBtn} onClick={onExport}>Export</button>
+        )}
+        {onNewDocument && (
+          <button className={styles.statsActionBtnPrimary} onClick={onNewDocument} disabled={isView} title={isView ? 'Views are read-only' : undefined}>
+            + New document
           </button>
         )}
       </div>
@@ -826,12 +848,12 @@ function Toolbar({ filter, searching, searchField, searchOp, availableOps, searc
             onChange={e => onFilterChange(e.target.value)}
           />
           {showWildcardHint && <span className={styles.searchWildcard}>%</span>}
-          {filter && (
-            <button className={styles.searchClear} onClick={() => onFilterChange('')} aria-label="Clear search">
-              <X size={8} />
-            </button>
-          )}
         </div>
+        {filter && (
+          <button className={styles.searchClear} onClick={() => onFilterChange('')} aria-label="Clear filter">
+            Clear
+          </button>
+        )}
       </div>
       <div className={styles.toolbarSep} />
       <div className={styles.colsWrap} ref={colsRef}>
@@ -994,7 +1016,7 @@ function ListRelationField({ name, collection, docID }: { name: string; collecti
 
 type PanelMode = 'view' | 'history' | 'graph'
 
-function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, viewNestedFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner }: {
+function DetailPanel({ doc, fields, collection, formFields, relationFields, listRelationFields, viewNestedFields, hasDocID, onClose, onUpdate, onDelete, updatePending, deletePending, onOpenInQueryRunner, panelWidth, onPanelWidthChange }: {
   doc:                Record<string, unknown>
   fields:             string[]
   collection:         string
@@ -1009,6 +1031,8 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   updatePending:      boolean
   deletePending:      boolean
   onOpenInQueryRunner?: (query: string) => void
+  panelWidth:         number
+  onPanelWidthChange: (w: number) => void
 }) {
   const docID = String(doc._docID ?? '')
   const [mode, setMode]                 = useState<PanelMode>('view')
@@ -1017,7 +1041,6 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [mutErr, setMutErr]               = useState<string | null>(null)
   const [openCids, setOpenCids]           = useState<Set<string>>(new Set())
-  const [panelWidth, setPanelWidth]       = useState(() => Math.round(window.innerWidth / 2))
   const panelRef = useRef<HTMLElement>(null)
 
   function startPanelResize(e: React.MouseEvent) {
@@ -1026,7 +1049,7 @@ function DetailPanel({ doc, fields, collection, formFields, relationFields, list
     const startWidth = panelWidth
     const onMove = (ev: MouseEvent) => {
       const containerW = (panelRef.current?.offsetParent as HTMLElement)?.offsetWidth ?? window.innerWidth - 120
-      setPanelWidth(Math.max(320, Math.min(containerW - 8, startWidth - (ev.clientX - startX))))
+      onPanelWidthChange(Math.max(320, Math.min(containerW - 8, startWidth - (ev.clientX - startX))))
     }
     const onUp   = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
     window.addEventListener('mousemove', onMove)

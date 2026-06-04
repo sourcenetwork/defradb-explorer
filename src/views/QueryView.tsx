@@ -37,6 +37,7 @@ type SubStatus = 'idle' | 'listening' | 'complete' | 'error'
 interface QueryTab {
   id: string
   name: string
+  defaultName: string
   query: string
   variables: string
   result: GraphQLResponse | null
@@ -105,9 +106,11 @@ const INTROSPECTION_QUERY = `{
 }`
 
 function makeTab(index: number, query = DEFAULT_QUERY): QueryTab {
+  const defaultName = `Query ${index}`
   return {
     id: `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    name: `Query ${index}`,
+    name: defaultName,
+    defaultName,
     query,
     variables: '',
     result: null,
@@ -126,7 +129,7 @@ function isSubscriptionQuery(query: string): boolean {
 const STORAGE_KEY = 'defradb-query-tabs-v2'
 
 type SavedState = {
-  tabs: Array<{ id: string; name: string; query: string; variables: string }>
+  tabs: Array<{ id: string; name: string; defaultName?: string; query: string; variables: string }>
   activeTabId: string
 }
 
@@ -141,7 +144,7 @@ function loadSaved(): SavedState | null {
 function saveTabs(tabs: QueryTab[], activeTabId: string) {
   try {
     const saved: SavedState = {
-      tabs: tabs.map(({ id, name, query, variables }) => ({ id, name, query, variables })),
+      tabs: tabs.map(({ id, name, defaultName, query, variables }) => ({ id, name, defaultName, query, variables })),
       activeTabId,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
@@ -241,7 +244,7 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   const [tabs, setTabsRaw] = useState<QueryTab[]>(() => {
     const saved = loadSaved()
     if (saved?.tabs?.length) {
-      return saved.tabs.map(t => ({ ...t, result: null, elapsed: null, subEvents: [], subStatus: 'idle' as SubStatus }))
+      return saved.tabs.map(t => ({ ...t, defaultName: t.defaultName ?? t.name, result: null, elapsed: null, subEvents: [], subStatus: 'idle' as SubStatus }))
     }
     return [makeTab(1)]
   })
@@ -272,7 +275,9 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   }
 
   function setQuery(query: string, cursorAt?: number) {
-    updateActiveTab({ query })
+    const match = query.match(/(?:query|mutation|subscription)\s+(\w+)/)
+    const name  = match ? match[1] : activeTab.defaultName
+    updateActiveTab({ query, name })
     if (cursorAt != null) {
       setTimeout(() => editorRef.current?.setCursor(cursorAt), 0)
     }
@@ -290,6 +295,8 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
     openQuery(query: string) {
       const newTab = makeTab(tabs.length + 1)
       newTab.query = query
+      const match = query.match(/(?:query|mutation|subscription)\s+(\w+)/)
+      if (match) newTab.name = match[1]
       setTabs(prev => [...prev, newTab], newTab.id)
       setActiveTabIdRaw(newTab.id)
       setCursorOffset(null)

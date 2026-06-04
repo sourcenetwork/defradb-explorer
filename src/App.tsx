@@ -2,7 +2,6 @@ import { useState, useRef } from 'react'
 import type { Tab } from './types'
 import Topbar from './components/Topbar'
 import Sidebar from './components/Sidebar'
-import TabBar from './components/TabBar'
 import SettingsModal from './components/SettingsModal'
 import DashboardView from './views/DashboardView'
 import CollectionsView from './views/CollectionsView'
@@ -58,15 +57,6 @@ export default function App() {
           onSelectTab={selectTab}
         />
         <main className={styles.main}>
-          <TabBar
-            activeTab={activeTab}
-            onTabChange={selectTab}
-            onNewDocument={() => collectionsRef.current?.openNewDoc()}
-            onExport={() => collectionsRef.current?.exportDocs()}
-            onNewType={() => schemaRef.current?.openCreate()}
-            onPatchType={() => schemaRef.current?.openPatch()}
-            onNewView={() => { schemaRef.current?.openCreateView(); selectTab('schema') }}
-          />
           <div className={styles.content}>
             {mountedTabs.has('dashboard') && (
               <div className={styles.tabPane} hidden={activeTab !== 'dashboard'}><DashboardView /></div>
@@ -78,7 +68,7 @@ export default function App() {
                   collection={activeCollection}
                   onViewSchema={name => { schemaRef.current?.selectType(name); selectTab('schema') }}
                   onCollectionInvalid={clearCollection}
-                  onOpenInQueryRunner={query => { queryRef.current?.openQuery(query); selectTab('query') }}
+                  onOpenInQueryRunner={query => { selectTab('query'); setTimeout(() => queryRef.current?.openQuery(query), 0) }}
                   onViewCommitGraph={docID => {
                     setCommitsJump(prev => ({ docID, seq: (prev?.seq ?? 0) + 1 }))
                     selectTab('commits')
@@ -102,7 +92,7 @@ export default function App() {
             {mountedTabs.has('commits') && (
               <div className={styles.tabPane} hidden={activeTab !== 'commits'}><CommitsView
                 jump={commitsJump}
-                onOpenInQueryRunner={query => { queryRef.current?.openQuery(query); selectTab('query') }}
+                onOpenInQueryRunner={query => { selectTab('query'); setTimeout(() => queryRef.current?.openQuery(query), 0) }}
                 onOpenInCollections={(collection, docID) => {
                   setActiveCollection(collection)
                   selectTab('collections')

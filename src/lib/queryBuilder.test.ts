@@ -16,6 +16,7 @@ import {
   getSelectedSubFieldsAtPath,
   toggleSubFieldAtPath,
   getActiveNestedSelectionAtOffset,
+  getCursorContext,
 } from './queryBuilder'
 
 // ── Test schema ───────────────────────────────────────────────────────────────
@@ -764,6 +765,10 @@ const nestedSchema = buildSchema(`
   type Query {
     Post(limit: Int): [Post]
   }
+
+  type Subscription {
+    Post(limit: Int): [Post]
+  }
 `)
 
 // ── toggleFieldInQuery: complex type handling ─────────────────────────────────
@@ -924,5 +929,38 @@ describe('getActiveNestedSelectionAtOffset', () => {
   it('returns null for invalid/empty query', () => {
     expect(getActiveNestedSelectionAtOffset('', 0, nestedSchema)).toBeNull()
     expect(getActiveNestedSelectionAtOffset('not valid !!!', 0, nestedSchema)).toBeNull()
+  })
+})
+
+// ── subscription opKind detection ─────────────────────────────────────────────
+
+describe('getCursorContext — subscription opKind', () => {
+  const subQuery = 'subscription {\n  Post(limit: 10) {\n    comment {\n      text\n    }\n  }\n}'
+
+  it('detects opKind as subscription for a root operation field', () => {
+    const offset = subQuery.indexOf('Post')
+    const ctx = getCursorContext(subQuery, offset, nestedSchema)
+    expect(ctx.operation?.opKind).toBe('subscription')
+    expect(ctx.operation?.operationName).toBe('Post')
+  })
+
+  it('detects opKind as subscription for a nested selection', () => {
+    const offset = subQuery.indexOf('text')
+    const ctx = getCursorContext(subQuery, offset, nestedSchema)
+    expect(ctx.nestedSelection?.opKind).toBe('subscription')
+    expect(ctx.nestedSelection?.operationName).toBe('Post')
+  })
+
+  it('getActiveNestedSelectionAtOffset reports opKind subscription', () => {
+    const offset = subQuery.indexOf('text')
+    const result = getActiveNestedSelectionAtOffset(subQuery, offset, nestedSchema)
+    expect(result?.opKind).toBe('subscription')
+    expect(result?.operationName).toBe('Post')
+  })
+
+  it('does not misreport subscription as query', () => {
+    const offset = subQuery.indexOf('Post')
+    const ctx = getCursorContext(subQuery, offset, nestedSchema)
+    expect(ctx.operation?.opKind).not.toBe('query')
   })
 })

@@ -278,6 +278,26 @@
   margin-bottom: 4px;
 }
 
+.selectAllRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--dark-border);
+  margin-bottom: 2px;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+.selectAllRow:hover { opacity: 1; }
+
+.selectAllLabel {
+  font-size: 11px;
+  font-family: 'CommitMono', monospace;
+  color: var(--muted);
+  user-select: none;
+}
+
+
 .typeNavLink {
   display: inline-flex;
   align-items: center;

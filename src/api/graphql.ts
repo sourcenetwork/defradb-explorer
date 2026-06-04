@@ -242,7 +242,7 @@ export function buildSearchFilter(term: string, field: string, fieldType = 'Stri
     const n = parseInt(t, 10)
     if (isNaN(n)) return ''
     value = String(n)
-  } else if (fieldType === 'Float') {
+  } else if (fieldType === 'Float' || fieldType === 'Float32' || fieldType === 'Float64') {
     const n = parseFloat(t)
     if (isNaN(n)) return ''
     value = String(n)

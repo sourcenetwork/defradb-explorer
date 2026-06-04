@@ -146,6 +146,17 @@ function AddedIcon() {
   )
 }
 
+function SelectAllIcon() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+      <circle cx={8} cy={8} r={6.5} stroke="currentColor" strokeWidth={1.2}/>
+      <line x1={5} y1={6} x2={11} y2={6} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/>
+      <line x1={5} y1={8} x2={11} y2={8} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/>
+      <line x1={5} y1={10} x2={11} y2={10} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 function ChevronRightIcon({ small }: { small?: boolean }) {
   const s = small ? 9 : 10
   return (
@@ -211,9 +222,8 @@ function OperationPage({
   const returnFields = isObjectType(returnType)
     ? Object.values(returnType.getFields()).filter(f => !AGGREGATE_NAMES.has(f.name))
     : []
-  const isSubscription = opKind === 'subscription'
-  const inQuery     = !isSubscription && isRootFieldInQuery(query, field.name)
-  const selected    = getSelectedFieldsForType(query, returnType.name, schema)
+  const inQuery     = isRootFieldInQuery(query, field.name)
+  const selected    = getSelectedFieldsForType(query, returnType.name, schema, field.name)
   const activeArgs  = getArgsForRootField(query, field.name)
   const visibleArgs = field.args.filter(a => !a.name.startsWith('_'))
 
@@ -282,6 +292,23 @@ function OperationPage({
               </button>
             )}
           </div>
+          <div className={styles.selectAllRow}>
+            <button
+              className={`${styles.addBtn} ${returnFields.every(f => selected.has(f.name)) ? styles.addBtnOn : ''}`}
+              disabled={!inQuery}
+              onClick={() => {
+                const allSelected = returnFields.every(f => selected.has(f.name))
+                const toToggle = allSelected
+                  ? returnFields.filter(f => selected.has(f.name))
+                  : returnFields.filter(f => !selected.has(f.name))
+                const next = toToggle.reduce((q, f) => toggleFieldInQuery(q, returnType.name, f.name, schema, field.name), query)
+                onQueryChange(next)
+              }}
+            >
+              {returnFields.every(f => selected.has(f.name)) ? <AddedIcon /> : <SelectAllIcon />}
+            </button>
+            <span className={styles.selectAllLabel}>All fields</span>
+          </div>
           {returnFields.map(f => {
             const tn = formatType(f.type)
             return (
@@ -290,7 +317,7 @@ function OperationPage({
                 name={f.name}
                 typeName={tn}
                 selected={selected.has(f.name)}
-                onToggle={() => onQueryChange(toggleFieldInQuery(query, returnType.name, f.name, schema))}
+                onToggle={() => onQueryChange(toggleFieldInQuery(query, returnType.name, f.name, schema, field.name))}
                 onNavigateField={() => onNavigateField(returnType.name, f.name)}
                 disabled={!inQuery}
               />
@@ -471,7 +498,25 @@ function TypePage({
 
       {fields.length > 0 && (
         <div className={styles.detailSection}>
-          <p className={styles.detailSectionLabel}>Fields</p>
+          <div className={styles.detailSectionHeader}>
+            <p className={styles.detailSectionLabel}>Fields</p>
+          </div>
+          <div className={styles.selectAllRow}>
+            <button
+              className={`${styles.addBtn} ${fields.every(f => selected.has(f.name)) ? styles.addBtnOn : ''}`}
+              onClick={() => {
+                const allSelected = fields.every(f => selected.has(f.name))
+                const toToggle = allSelected
+                  ? fields.filter(f => selected.has(f.name))
+                  : fields.filter(f => !selected.has(f.name))
+                const next = toToggle.reduce((q, f) => toggleFieldInQuery(q, typeName, f.name, schema), query)
+                onQueryChange(next)
+              }}
+            >
+              {fields.every(f => selected.has(f.name)) ? <AddedIcon /> : <SelectAllIcon />}
+            </button>
+            <span className={styles.selectAllLabel}>All fields</span>
+          </div>
           {fields.map(f => (
             <SelectableRow
               key={f.name}
@@ -556,12 +601,35 @@ function FieldDetailPage({
       {subFields.length > 0 && (
         <div className={styles.detailSection}>
           <div className={styles.detailSectionHeader}>
-            <p className={styles.detailSectionLabel}>Fields of {named.name}</p>
+            <p className={styles.detailSectionLabel}>Fields</p>
             {typeNavigable && (
               <button className={styles.typeNavLink} onClick={() => onNavigateType(named.name)}>
                 {named.name} <ChevronRightIcon small />
               </button>
             )}
+          </div>
+          <div className={styles.selectAllRow}>
+            <button
+              className={`${styles.addBtn} ${subFields.every(f => subSelected.has(f.name)) ? styles.addBtnOn : ''}`}
+              onClick={() => {
+                const allSelected = subFields.every(f => subSelected.has(f.name))
+                if (allSelected) {
+                  const next = subFields
+                    .filter(f => subSelected.has(f.name))
+                    .reduce((q, f) => toggleSubFieldAtPath(q, parentTypeName, fieldName, f.name, schema), query)
+                  onQueryChange(next)
+                } else {
+                  let q = isSelected ? query : toggleFieldInQuery(query, parentTypeName, fieldName, schema)
+                  q = subFields
+                    .filter(f => !subSelected.has(f.name))
+                    .reduce((acc, f) => toggleSubFieldAtPath(acc, parentTypeName, fieldName, f.name, schema), q)
+                  onQueryChange(q)
+                }
+              }}
+            >
+              {subFields.every(f => subSelected.has(f.name)) ? <AddedIcon /> : <SelectAllIcon />}
+            </button>
+            <span className={styles.selectAllLabel}>All fields</span>
           </div>
           {subFields.map(f => (
             <SelectableRow
@@ -942,7 +1010,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
         }
 
         if (activeObject.operationName && activeObject.opKind) {
-          const opRootType = activeObject.opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
+          const opRootType = activeObject.opKind === 'query' ? schema.getQueryType() : activeObject.opKind === 'subscription' ? schema.getSubscriptionType() : schema.getMutationType()
           const opField    = opRootType?.getFields()[activeObject.operationName]
           if (opField) {
             const opIdx = s.findIndex(
@@ -969,7 +1037,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
     } else if (activeNestedSelection) {
       // ── Inside a nested selection set (e.g. Tag._version { … }) ──────────
       setStack(s => {
-        const opRootType = activeNestedSelection.opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
+        const opRootType = activeNestedSelection.opKind === 'query' ? schema.getQueryType() : activeNestedSelection.opKind === 'subscription' ? schema.getSubscriptionType() : schema.getMutationType()
         const opField    = opRootType?.getFields()[activeNestedSelection.operationName]
         if (!opField) return s
 
@@ -995,7 +1063,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
     } else if (activeOperation) {
       // ── Inside a root operation field (selection set or args) ─────────────
       setStack(s => {
-        const opRootType = activeOperation.opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
+        const opRootType = activeOperation.opKind === 'query' ? schema.getQueryType() : activeOperation.opKind === 'subscription' ? schema.getSubscriptionType() : schema.getMutationType()
         const opField    = opRootType?.getFields()[activeOperation.operationName]
         if (!opField) return s
 
@@ -1023,7 +1091,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
         return i < s.length - 1 ? s.slice(0, i + 1) : s
       })
     }
-  }, [activeObjectKey, activeNestedKey, activeOperationKey, schema])
+  }, [activeObjectKey, activeNestedKey, activeOperationKey, navCursorOffset, schema])
 
   const prevActiveRef = useRef<ActiveObjectInfo | null>(null)
   prevActiveRef.current = activeObject

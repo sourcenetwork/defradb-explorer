@@ -351,10 +351,6 @@ export function CreateViewForm({ onDone }: { onDone: () => void }) {
     <div className={styles.formRoot}>
       {/* Toolbar */}
       <div className={styles.formToolbar}>
-        <button className={styles.backBtn} onClick={onDone}>
-          ← Schema
-        </button>
-        <span className={styles.backSep} />
         <span className={styles.formTitle}>New view</span>
         <span className={styles.formHint}>Define a virtual collection from a GraphQL query</span>
         {collections && collections.length > 0 && (

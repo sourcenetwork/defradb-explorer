@@ -32,7 +32,7 @@ export type ActiveObjectInfo = {
   typeName: string
   objectStart: number
   operationName?: string
-  opKind?: 'query' | 'mutation'
+  opKind?: 'query' | 'mutation' | 'subscription'
 }
 
 /** Arg names currently present on a root field in the query. */
@@ -158,9 +158,9 @@ export function getSelectedFieldsForType(
   query: string,
   typeName: string,
   schema: GraphQLSchema,
+  scopeToFieldName?: string,
 ): Set<string> {
   try {
-    // Use TypeInfo so this works at any nesting depth (not just root-level return types)
     const doc = parse(query)
     const typeInfo = new TypeInfo(schema)
     const selected = new Set<string>()
@@ -172,6 +172,7 @@ export function getSelectedFieldsForType(
           const type = typeInfo.getType()
           if (!type) return
           if (getNamedType(type as GraphQLType).name !== typeName) return
+          if (scopeToFieldName && node.name.value !== scopeToFieldName) return
           for (const inner of node.selectionSet.selections) {
             if (inner.kind === Kind.FIELD) selected.add(inner.name.value)
           }
@@ -250,13 +251,14 @@ export function toggleFieldInQuery(
   typeName: string,
   fieldName: string,
   schema: GraphQLSchema,
+  scopeToFieldName?: string,
 ): string {
-  const selected = getSelectedFieldsForType(query, typeName, schema)
+  const selected = getSelectedFieldsForType(query, typeName, schema, scopeToFieldName)
   const adding   = !selected.has(fieldName)
 
   const rootQueryFields = schema.getQueryType()?.getFields() ?? {}
 
-  const rootFieldName = Object.keys(rootQueryFields).find(k =>
+  const rootFieldName = scopeToFieldName ?? Object.keys(rootQueryFields).find(k =>
     getNamedType(rootQueryFields[k].type).name === typeName
   ) ?? null
 
@@ -273,6 +275,7 @@ export function toggleFieldInQuery(
           const type = typeInfoForToggle.getType()
           if (!type) return
           if (getNamedType(type as GraphQLType).name !== typeName) return
+          if (scopeToFieldName && node.name.value !== scopeToFieldName) return
           targetNode = node
         },
       },
@@ -596,14 +599,14 @@ export function getActiveObjectAtOffset(
     const doc = parse(query)
     const typeInfo = new TypeInfo(schema)
     let best: ActiveObjectInfo | null = null
-    let currentOpKind: 'query' | 'mutation' = 'query'
+    let currentOpKind: 'query' | 'mutation' | 'subscription' = 'query'
     let fieldDepth = 0
     let currentRootField: string | null = null
 
     visit(doc, visitWithTypeInfo(typeInfo, {
       OperationDefinition: {
         enter(node: OperationDefinitionNode) {
-          currentOpKind = node.operation === 'mutation' ? 'mutation' : 'query'
+          currentOpKind = node.operation === 'mutation' ? 'mutation' : node.operation === 'subscription' ? 'subscription' : 'query'
           fieldDepth = 0
           currentRootField = null
         },
@@ -697,19 +700,20 @@ export function getActiveOperationAtOffset(
   query: string,
   cursorOffset: number,
   schema: GraphQLSchema,
-): { operationName: string; opKind: 'query' | 'mutation' } | null {
+): { operationName: string; opKind: 'query' | 'mutation' | 'subscription' } | null {
   try {
     const doc = parse(query)
-    const rootQueryFields    = schema.getQueryType()?.getFields()    ?? {}
-    const rootMutationFields = schema.getMutationType()?.getFields() ?? {}
+    const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
+    const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
+    const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
 
     for (const def of doc.definitions) {
       if (def.kind !== Kind.OPERATION_DEFINITION) continue
-      const opKind: 'query' | 'mutation' = def.operation === 'mutation' ? 'mutation' : 'query'
+      const opKind: 'query' | 'mutation' | 'subscription' = def.operation === 'mutation' ? 'mutation' : def.operation === 'subscription' ? 'subscription' : 'query'
       for (const sel of def.selectionSet.selections) {
         if (sel.kind !== Kind.FIELD || !sel.loc) continue
         const fieldName = sel.name.value
-        if (!(fieldName in rootQueryFields) && !(fieldName in rootMutationFields)) continue
+        if (!(fieldName in rootQueryFields) && !(fieldName in rootMutationFields) && !(fieldName in rootSubscriptionFields)) continue
         if (cursorOffset >= sel.loc.start && cursorOffset <= sel.loc.end) {
           return { operationName: fieldName, opKind }
         }
@@ -846,13 +850,14 @@ export function canToggleInputType(
   if (hasInputObjectInQuery(query, inputTypeName, schema)) return true
   try {
     const doc = parse(query)
-    const rootQueryFields    = schema.getQueryType()?.getFields()    ?? {}
-    const rootMutationFields = schema.getMutationType()?.getFields() ?? {}
+    const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
+    const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
+    const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
     for (const def of doc.definitions) {
       if (def.kind !== Kind.OPERATION_DEFINITION) continue
       for (const sel of def.selectionSet.selections) {
         if (sel.kind !== Kind.FIELD) continue
-        const rootFieldDef = rootQueryFields[sel.name.value] ?? rootMutationFields[sel.name.value]
+        const rootFieldDef = rootQueryFields[sel.name.value] ?? rootMutationFields[sel.name.value] ?? rootSubscriptionFields[sel.name.value]
         if (rootFieldDef?.args.some(a => getNamedType(a.type).name === inputTypeName)) return true
       }
     }
@@ -878,15 +883,16 @@ export function ensureArgAndToggleInputField(
   // Input type not yet in query — find a root selection that has an arg of this type.
   try {
     const doc = parse(query)
-    const rootQueryFields    = schema.getQueryType()?.getFields()    ?? {}
-    const rootMutationFields = schema.getMutationType()?.getFields() ?? {}
+    const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
+    const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
+    const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
 
     for (const def of doc.definitions) {
       if (def.kind !== Kind.OPERATION_DEFINITION) continue
       for (const sel of def.selectionSet.selections) {
         if (sel.kind !== Kind.FIELD) continue
         const rootFieldName = sel.name.value
-        const rootFieldDef  = rootQueryFields[rootFieldName] ?? rootMutationFields[rootFieldName]
+        const rootFieldDef  = rootQueryFields[rootFieldName] ?? rootMutationFields[rootFieldName] ?? rootSubscriptionFields[rootFieldName]
         if (!rootFieldDef) continue
 
         const matchingArg = rootFieldDef.args.find(a => getNamedType(a.type).name === inputTypeName)
@@ -1040,7 +1046,7 @@ export type ActiveNestedSelectionInfo = {
   fieldName: string        // the nested field (e.g. '_version')
   fieldTypeName: string    // the field's return type (e.g. 'Commit')
   operationName: string    // root operation field name (e.g. 'Tag')
-  opKind: 'query' | 'mutation'
+  opKind: 'query' | 'mutation' | 'subscription'
 }
 
 /** Returns info about the innermost nested selection set the cursor is inside (depth ≥ 2). */
@@ -1053,14 +1059,14 @@ export function getActiveNestedSelectionAtOffset(
     const doc = parse(query)
     const typeInfo = new TypeInfo(schema)
     let best: ActiveNestedSelectionInfo | null = null
-    let currentOpKind: 'query' | 'mutation' = 'query'
+    let currentOpKind: 'query' | 'mutation' | 'subscription' = 'query'
     let fieldDepth = 0
     let currentRootField: string | null = null
 
     visit(doc, visitWithTypeInfo(typeInfo, {
       OperationDefinition: {
         enter(node: OperationDefinitionNode) {
-          currentOpKind = node.operation === 'mutation' ? 'mutation' : 'query'
+          currentOpKind = node.operation === 'mutation' ? 'mutation' : node.operation === 'subscription' ? 'subscription' : 'query'
           fieldDepth = 0
           currentRootField = null
         },
@@ -1111,7 +1117,7 @@ export function getActiveNestedSelectionAtOffset(
 export type CursorContext = {
   insertObject:    ActiveObjectInfo          | null
   nestedSelection: ActiveNestedSelectionInfo | null
-  operation:       { operationName: string; opKind: 'query' | 'mutation' } | null
+  operation:       { operationName: string; opKind: 'query' | 'mutation' | 'subscription' } | null
 }
 
 export function getCursorContext(
@@ -1128,17 +1134,18 @@ export function getCursorContext(
     let nestedSelection: ActiveNestedSelectionInfo | null = null
     let operation:       CursorContext['operation']       = null
 
-    let currentOpKind: 'query' | 'mutation' = 'query'
+    let currentOpKind: 'query' | 'mutation' | 'subscription' = 'query'
     let fieldDepth = 0
     let currentRootField: string | null = null
 
-    const rootQueryFields    = schema.getQueryType()?.getFields()    ?? {}
-    const rootMutationFields = schema.getMutationType()?.getFields() ?? {}
+    const rootQueryFields        = schema.getQueryType()?.getFields()        ?? {}
+    const rootMutationFields     = schema.getMutationType()?.getFields()     ?? {}
+    const rootSubscriptionFields = schema.getSubscriptionType()?.getFields() ?? {}
 
     visit(doc, visitWithTypeInfo(typeInfo, {
       OperationDefinition: {
         enter(node: OperationDefinitionNode) {
-          currentOpKind = node.operation === 'mutation' ? 'mutation' : 'query'
+          currentOpKind = node.operation === 'mutation' ? 'mutation' : node.operation === 'subscription' ? 'subscription' : 'query'
           fieldDepth    = 0
           currentRootField = null
         },
@@ -1150,7 +1157,7 @@ export function getCursorContext(
             currentRootField = node.name.value
             if (node.loc && cursorOffset >= node.loc.start && cursorOffset <= node.loc.end) {
               const fn = node.name.value
-              if (fn in rootQueryFields || fn in rootMutationFields) {
+              if (fn in rootQueryFields || fn in rootMutationFields || fn in rootSubscriptionFields) {
                 operation = { operationName: fn, opKind: currentOpKind }
               }
             }
