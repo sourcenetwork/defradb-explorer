@@ -75,3 +75,4 @@
 }
 
 .btnPrimary:hover { background: var(--green-hover); }
+.btnPrimary:disabled { opacity: 0.35; cursor: not-allowed; }

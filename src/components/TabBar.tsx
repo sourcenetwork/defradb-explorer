@@ -2,13 +2,14 @@ import type { Tab } from '../types'
 import styles from './TabBar.module.css'
 
 interface Props {
-  activeTab:      Tab
-  onTabChange:    (tab: Tab) => void
-  onNewDocument?: () => void
-  onExport?:      () => void
-  onNewType?:     () => void
-  onPatchType?:   () => void
-  onNewView?:     () => void
+  activeTab:        Tab
+  onTabChange:      (tab: Tab) => void
+  onNewDocument?:   () => void
+  isViewSelected?:  boolean
+  onExport?:        () => void
+  onNewType?:       () => void
+  onPatchType?:     () => void
+  onNewView?:       () => void
 }
 
 const TABS: { id: Tab; label: string }[] = [
@@ -18,7 +19,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'commits',     label: 'Commits' },
 ]
 
-export default function TabBar({ activeTab, onTabChange, onNewDocument, onExport, onNewType, onPatchType, onNewView }: Props) {
+export default function TabBar({ activeTab, onTabChange, onNewDocument, isViewSelected, onExport, onNewType, onPatchType, onNewView }: Props) {
   return (
     <div className={styles.tabBar}>
       {TABS.map(t => (
@@ -35,7 +36,7 @@ export default function TabBar({ activeTab, onTabChange, onNewDocument, onExport
           <button className={styles.btnSecondary} onClick={onExport}>Export</button>
         )}
         {activeTab === 'collections' && (
-          <button className={styles.btnPrimary} onClick={onNewDocument}>+ New document</button>
+          <button className={styles.btnPrimary} onClick={onNewDocument} disabled={isViewSelected} title={isViewSelected ? 'Views are read-only' : undefined}>+ New document</button>
         )}
         {activeTab === 'schema' && (
           <button className={styles.btnSecondary} onClick={onPatchType}>Patch collection</button>
