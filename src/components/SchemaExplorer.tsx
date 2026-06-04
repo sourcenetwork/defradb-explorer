@@ -211,8 +211,7 @@ function OperationPage({
   const returnFields = isObjectType(returnType)
     ? Object.values(returnType.getFields()).filter(f => !AGGREGATE_NAMES.has(f.name))
     : []
-  const isSubscription = opKind === 'subscription'
-  const inQuery     = !isSubscription && isRootFieldInQuery(query, field.name)
+  const inQuery     = isRootFieldInQuery(query, field.name)
   const selected    = getSelectedFieldsForType(query, returnType.name, schema)
   const activeArgs  = getArgsForRootField(query, field.name)
   const visibleArgs = field.args.filter(a => !a.name.startsWith('_'))
@@ -471,7 +470,22 @@ function TypePage({
 
       {fields.length > 0 && (
         <div className={styles.detailSection}>
-          <p className={styles.detailSectionLabel}>Fields</p>
+          <div className={styles.detailSectionHeader}>
+            <p className={styles.detailSectionLabel}>Fields</p>
+            <button
+              className={styles.toggleAllBtn}
+              onClick={() => {
+                const allSelected = fields.every(f => selected.has(f.name))
+                const toToggle = allSelected
+                  ? fields.filter(f => selected.has(f.name))
+                  : fields.filter(f => !selected.has(f.name))
+                const next = toToggle.reduce((q, f) => toggleFieldInQuery(q, typeName, f.name, schema), query)
+                onQueryChange(next)
+              }}
+            >
+              {fields.every(f => selected.has(f.name)) ? 'None' : 'All'}
+            </button>
+          </div>
           {fields.map(f => (
             <SelectableRow
               key={f.name}
@@ -556,7 +570,27 @@ function FieldDetailPage({
       {subFields.length > 0 && (
         <div className={styles.detailSection}>
           <div className={styles.detailSectionHeader}>
-            <p className={styles.detailSectionLabel}>Fields of {named.name}</p>
+            <p className={styles.detailSectionLabel}>Fields</p>
+            <button
+              className={styles.toggleAllBtn}
+              onClick={() => {
+                const allSelected = subFields.every(f => subSelected.has(f.name))
+                if (allSelected) {
+                  const next = subFields
+                    .filter(f => subSelected.has(f.name))
+                    .reduce((q, f) => toggleSubFieldAtPath(q, parentTypeName, fieldName, f.name, schema), query)
+                  onQueryChange(next)
+                } else {
+                  let q = isSelected ? query : toggleFieldInQuery(query, parentTypeName, fieldName, schema)
+                  q = subFields
+                    .filter(f => !subSelected.has(f.name))
+                    .reduce((acc, f) => toggleSubFieldAtPath(acc, parentTypeName, fieldName, f.name, schema), q)
+                  onQueryChange(q)
+                }
+              }}
+            >
+              {subFields.every(f => subSelected.has(f.name)) ? 'None' : 'All'}
+            </button>
             {typeNavigable && (
               <button className={styles.typeNavLink} onClick={() => onNavigateType(named.name)}>
                 {named.name} <ChevronRightIcon small />
@@ -942,7 +976,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
         }
 
         if (activeObject.operationName && activeObject.opKind) {
-          const opRootType = activeObject.opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
+          const opRootType = activeObject.opKind === 'query' ? schema.getQueryType() : activeObject.opKind === 'subscription' ? schema.getSubscriptionType() : schema.getMutationType()
           const opField    = opRootType?.getFields()[activeObject.operationName]
           if (opField) {
             const opIdx = s.findIndex(
@@ -969,7 +1003,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
     } else if (activeNestedSelection) {
       // ── Inside a nested selection set (e.g. Tag._version { … }) ──────────
       setStack(s => {
-        const opRootType = activeNestedSelection.opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
+        const opRootType = activeNestedSelection.opKind === 'query' ? schema.getQueryType() : activeNestedSelection.opKind === 'subscription' ? schema.getSubscriptionType() : schema.getMutationType()
         const opField    = opRootType?.getFields()[activeNestedSelection.operationName]
         if (!opField) return s
 
@@ -995,7 +1029,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
     } else if (activeOperation) {
       // ── Inside a root operation field (selection set or args) ─────────────
       setStack(s => {
-        const opRootType = activeOperation.opKind === 'query' ? schema.getQueryType() : schema.getMutationType()
+        const opRootType = activeOperation.opKind === 'query' ? schema.getQueryType() : activeOperation.opKind === 'subscription' ? schema.getSubscriptionType() : schema.getMutationType()
         const opField    = opRootType?.getFields()[activeOperation.operationName]
         if (!opField) return s
 
