@@ -240,6 +240,9 @@
   color: var(--muted);
   cursor: pointer;
   white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: color 0.1s;
 }
 .tab:hover .tabLabel { color: var(--subtitle); }

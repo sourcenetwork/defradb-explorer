@@ -272,7 +272,9 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   }
 
   function setQuery(query: string, cursorAt?: number) {
-    updateActiveTab({ query })
+    const match = query.match(/(?:query|mutation|subscription)\s+(\w+)/)
+    const name  = match ? match[1] : null
+    updateActiveTab({ query, ...(name ? { name } : {}) })
     if (cursorAt != null) {
       setTimeout(() => editorRef.current?.setCursor(cursorAt), 0)
     }
@@ -290,6 +292,8 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
     openQuery(query: string) {
       const newTab = makeTab(tabs.length + 1)
       newTab.query = query
+      const match = query.match(/(?:query|mutation|subscription)\s+(\w+)/)
+      if (match) newTab.name = match[1]
       setTabs(prev => [...prev, newTab], newTab.id)
       setActiveTabIdRaw(newTab.id)
       setCursorOffset(null)
