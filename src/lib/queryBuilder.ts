@@ -1114,7 +1114,7 @@ export function getActiveNestedSelectionAtOffset(
 export type CursorContext = {
   insertObject:    ActiveObjectInfo          | null
   nestedSelection: ActiveNestedSelectionInfo | null
-  operation:       { operationName: string; opKind: 'query' | 'mutation' } | null
+  operation:       { operationName: string; opKind: 'query' | 'mutation' | 'subscription' } | null
 }
 
 export function getCursorContext(
