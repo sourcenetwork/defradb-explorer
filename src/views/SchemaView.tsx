@@ -142,27 +142,47 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
     }
   }, [data, userTypes])
 
-  if (viewMode === 'editor') {
-    return (
-      <div className={styles.schemaShell}>
-        <SchemaEditor key={editorMode} initialMode={editorMode} onDone={() => setViewMode('table')} />
-      </div>
-    )
-  }
+  const isSubView = viewMode === 'editor' || viewMode === 'create-view'
 
-  if (viewMode === 'create-view') {
-    return (
-      <div className={styles.schemaShell}>
+  return (
+    <div className={styles.schemaShell}>
+      {/* Persistent toolbar — always in the same position */}
+      <div className={styles.viewToolbar}>
+        {isSubView ? (
+          <div className={styles.viewToggleGroup}>
+            <button className={styles.viewToggle} onClick={() => setViewMode('table')}>← Schema</button>
+          </div>
+        ) : (
+          <div className={styles.viewToggleGroup}>
+            <button
+              className={`${styles.viewToggle} ${viewMode === 'table' ? styles.viewToggleActive : ''}`}
+              onClick={() => setViewMode('table')}
+            >Table</button>
+            <button
+              className={`${styles.viewToggle} ${viewMode === 'graph' ? styles.viewToggleActive : ''}`}
+              onClick={() => setViewMode('graph')}
+            >Graph</button>
+            <button
+              className={`${styles.viewToggle} ${viewMode === 'sdl' ? styles.viewToggleActive : ''}`}
+              onClick={() => setViewMode('sdl')}
+            >SDL</button>
+          </div>
+        )}
+        <div className={styles.viewToolbarActions}>
+          <button className={styles.toolbarBtn} onClick={() => { setEditorMode('patch'); setViewMode('editor') }}>Patch collection</button>
+          <button className={styles.toolbarBtn} onClick={() => setViewMode('create-view')}>+ New view</button>
+          <button className={styles.toolbarBtnPrimary} onClick={() => { setEditorMode('create'); setViewMode('editor') }}>+ New collection</button>
+        </div>
+      </div>
+
+      {viewMode === 'editor' && (
+        <SchemaEditor key={editorMode} initialMode={editorMode} />
+      )}
+      {viewMode === 'create-view' && (
         <CreateViewForm onDone={() => setViewMode('table')} />
-      </div>
-    )
-  }
-
-  // Loading skeleton
-  if (isLoading) {
-    return (
-      <div className={styles.schemaShell}>
-        <div className={styles.viewToolbar} />
+      )}
+      {/* Loading skeleton */}
+      {!isSubView && isLoading && (
         <div className={styles.view}>
           <div className={styles.typeSidebar}>
             {[...Array(6)].map((_, i) => (
@@ -171,42 +191,13 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
           </div>
           <div className={styles.schemaMain} />
         </div>
-      </div>
-    )
-  }
-
-  if (isError) {
-    return (
-      <div className={styles.schemaShell}>
-        <div className={styles.viewToolbar} />
+      )}
+      {!isSubView && isError && (
         <div className={styles.errorState}>
           <p>Could not load schema — check your connection.</p>
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.schemaShell}>
-      {/* Persistent toolbar — always in the same position */}
-      <div className={styles.viewToolbar}>
-        <div className={styles.viewToggleGroup}>
-          <button
-            className={`${styles.viewToggle} ${viewMode === 'table' ? styles.viewToggleActive : ''}`}
-            onClick={() => setViewMode('table')}
-          >Table</button>
-          <button
-            className={`${styles.viewToggle} ${viewMode === 'graph' ? styles.viewToggleActive : ''}`}
-            onClick={() => setViewMode('graph')}
-          >Graph</button>
-          <button
-            className={`${styles.viewToggle} ${viewMode === 'sdl' ? styles.viewToggleActive : ''}`}
-            onClick={() => setViewMode('sdl')}
-          >SDL</button>
-        </div>
-      </div>
-
-      {viewMode === 'graph' ? (
+      )}
+      {!isSubView && !isLoading && !isError && (viewMode === 'graph' ? (
         <div className={styles.graphArea}>
           <SchemaGraph types={data?.__schema.types ?? []} />
         </div>
@@ -332,7 +323,7 @@ const SchemaView = forwardRef<SchemaViewHandle>(function SchemaView(_, ref) {
             </div>
           )}
         </div>
-      )}
+      ))}
     </div>
   )
 })

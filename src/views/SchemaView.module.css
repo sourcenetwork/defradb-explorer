@@ -210,12 +210,46 @@
 .viewToolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--dark-border);
   background: var(--obsidian);
   flex-shrink: 0;
 }
+
+.viewToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbarBtn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--dark-border-2);
+  background: var(--dark-surface);
+  color: var(--subtitle);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+  white-space: nowrap;
+}
+.toolbarBtn:hover { color: var(--white); border-color: var(--gray-500); }
+
+.toolbarBtnPrimary {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--green-btn);
+  color: #000;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+.toolbarBtnPrimary:hover { background: var(--green-hover); }
 
 .viewToggleGroup {
   display: flex;

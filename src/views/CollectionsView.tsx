@@ -429,6 +429,8 @@ const CollectionBrowser = forwardRef<CollectionBrowserHandle, { collection: stri
         onViewSchema={onViewSchema}
         onRefreshView={viewMeta?.is_materialized ? () => refreshMut.mutate(collection, { onSuccess: () => refetch() }) : undefined}
         refreshPending={refreshMut.isPending}
+        onExport={handleExport}
+        onNewDocument={() => setShowNewDoc(true)}
       />
       <Toolbar
         filter={filter}
@@ -624,12 +626,14 @@ function IndexesBar({ collection }: { collection: string }) {
 
 // ── Stats row ─────────────────────────────────────────────────────────────────
 
-function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMaterialized, onViewSchema, onRefreshView, refreshPending }: {
+function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMaterialized, onViewSchema, onRefreshView, refreshPending, onExport, onNewDocument }: {
   collection: string; count: number; fieldCount: number; isBranchable?: boolean
   isView?: boolean; isMaterialized?: boolean
   onViewSchema?: (name: string) => void
   onRefreshView?: () => void
   refreshPending?: boolean
+  onExport?: () => void
+  onNewDocument?: () => void
 }) {
   return (
     <div className={styles.statsRow}>
@@ -660,7 +664,7 @@ function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMater
           </span>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
         {onRefreshView && (
           <button className={styles.refreshViewBtn} onClick={onRefreshView} disabled={refreshPending}>
             <RotateCw size={10} />
@@ -671,6 +675,14 @@ function StatsRow({ collection, count, fieldCount, isBranchable, isView, isMater
           <button className={styles.viewSchemaBtn} onClick={() => onViewSchema(collection)}>
             View schema
             <ArrowRight size={10} />
+          </button>
+        )}
+        {onExport && (
+          <button className={styles.statsActionBtn} onClick={onExport}>Export</button>
+        )}
+        {onNewDocument && (
+          <button className={styles.statsActionBtnPrimary} onClick={onNewDocument} disabled={isView} title={isView ? 'Views are read-only' : undefined}>
+            + New document
           </button>
         )}
       </div>

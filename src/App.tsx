@@ -2,7 +2,6 @@ import { useState, useRef } from 'react'
 import type { Tab } from './types'
 import Topbar from './components/Topbar'
 import Sidebar from './components/Sidebar'
-import TabBar from './components/TabBar'
 import SettingsModal from './components/SettingsModal'
 import DashboardView from './views/DashboardView'
 import CollectionsView from './views/CollectionsView'
@@ -14,7 +13,6 @@ import type { SchemaViewHandle } from './views/SchemaView'
 import PeersView from './views/PeersView'
 import CommitsView from './views/CommitsView'
 import { useUIStore } from './store/uiStore'
-import { useCollectionViewNames } from './hooks/useCollections'
 import styles from './App.module.css'
 
 export default function App() {
@@ -29,7 +27,6 @@ export default function App() {
     initial.add(activeTab)
     return initial
   })
-  const { data: viewNames } = useCollectionViewNames()
   const [commitsJump, setCommitsJump] = useState<{ docID: string; seq: number } | null>(null)
   const collectionsRef = useRef<CollectionsViewHandle>(null)
   const schemaRef      = useRef<SchemaViewHandle>(null)
@@ -60,16 +57,6 @@ export default function App() {
           onSelectTab={selectTab}
         />
         <main className={styles.main}>
-          <TabBar
-            activeTab={activeTab}
-            onTabChange={selectTab}
-            onNewDocument={() => collectionsRef.current?.openNewDoc()}
-            isViewSelected={!!(activeCollection && viewNames?.has(activeCollection))}
-            onExport={() => collectionsRef.current?.exportDocs()}
-            onNewType={() => schemaRef.current?.openCreate()}
-            onPatchType={() => schemaRef.current?.openPatch()}
-            onNewView={() => { schemaRef.current?.openCreateView(); selectTab('schema') }}
-          />
           <div className={styles.content}>
             {mountedTabs.has('dashboard') && (
               <div className={styles.tabPane} hidden={activeTab !== 'dashboard'}><DashboardView /></div>

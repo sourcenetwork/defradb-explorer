@@ -85,19 +85,19 @@
 .statsRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   padding: 14px 20px;
   background: var(--dark-surface);
   border-bottom: 1px solid var(--dark-border);
   flex-shrink: 0;
-  gap: 16px;
+  gap: 8px 16px;
 }
 
 .statsMain {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .statsTitleRow {
@@ -197,6 +197,32 @@
 }
 .refreshViewBtn:hover { background: rgba(16, 203, 255, 0.08); border-color: rgba(16, 203, 255, 0.5); }
 .refreshViewBtn:disabled { opacity: 0.5; cursor: default; }
+
+.statsActionBtn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--dark-border-2);
+  background: var(--dark-surface);
+  color: var(--subtitle);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+.statsActionBtn:hover { color: var(--white); border-color: var(--gray-500); }
+
+.statsActionBtnPrimary {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--green-btn);
+  color: #000;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.statsActionBtnPrimary:hover { background: var(--green-hover); }
+.statsActionBtnPrimary:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* Toolbar */
 .toolbar {
