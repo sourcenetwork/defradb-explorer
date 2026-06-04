@@ -78,7 +78,7 @@ export default function App() {
                   collection={activeCollection}
                   onViewSchema={name => { schemaRef.current?.selectType(name); selectTab('schema') }}
                   onCollectionInvalid={clearCollection}
-                  onOpenInQueryRunner={query => { queryRef.current?.openQuery(query); selectTab('query') }}
+                  onOpenInQueryRunner={query => { selectTab('query'); setTimeout(() => queryRef.current?.openQuery(query), 0) }}
                   onViewCommitGraph={docID => {
                     setCommitsJump(prev => ({ docID, seq: (prev?.seq ?? 0) + 1 }))
                     selectTab('commits')
@@ -102,7 +102,7 @@ export default function App() {
             {mountedTabs.has('commits') && (
               <div className={styles.tabPane} hidden={activeTab !== 'commits'}><CommitsView
                 jump={commitsJump}
-                onOpenInQueryRunner={query => { queryRef.current?.openQuery(query); selectTab('query') }}
+                onOpenInQueryRunner={query => { selectTab('query'); setTimeout(() => queryRef.current?.openQuery(query), 0) }}
                 onOpenInCollections={(collection, docID) => {
                   setActiveCollection(collection)
                   selectTab('collections')
