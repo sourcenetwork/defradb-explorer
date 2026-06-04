@@ -146,6 +146,17 @@ function AddedIcon() {
   )
 }
 
+function SelectAllIcon() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+      <circle cx={8} cy={8} r={6.5} stroke="currentColor" strokeWidth={1.2}/>
+      <line x1={5} y1={6} x2={11} y2={6} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/>
+      <line x1={5} y1={8} x2={11} y2={8} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/>
+      <line x1={5} y1={10} x2={11} y2={10} stroke="currentColor" strokeWidth={1.2} strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 function ChevronRightIcon({ small }: { small?: boolean }) {
   const s = small ? 9 : 10
   return (
@@ -280,6 +291,23 @@ function OperationPage({
                 {returnType.name} <ChevronRightIcon small />
               </button>
             )}
+          </div>
+          <div className={styles.selectAllRow}>
+            <button
+              className={`${styles.addBtn} ${returnFields.every(f => selected.has(f.name)) ? styles.addBtnOn : ''}`}
+              disabled={!inQuery}
+              onClick={() => {
+                const allSelected = returnFields.every(f => selected.has(f.name))
+                const toToggle = allSelected
+                  ? returnFields.filter(f => selected.has(f.name))
+                  : returnFields.filter(f => !selected.has(f.name))
+                const next = toToggle.reduce((q, f) => toggleFieldInQuery(q, returnType.name, f.name, schema), query)
+                onQueryChange(next)
+              }}
+            >
+              {returnFields.every(f => selected.has(f.name)) ? <AddedIcon /> : <SelectAllIcon />}
+            </button>
+            <span className={styles.selectAllLabel}>All fields</span>
           </div>
           {returnFields.map(f => {
             const tn = formatType(f.type)
@@ -472,8 +500,10 @@ function TypePage({
         <div className={styles.detailSection}>
           <div className={styles.detailSectionHeader}>
             <p className={styles.detailSectionLabel}>Fields</p>
+          </div>
+          <div className={styles.selectAllRow}>
             <button
-              className={styles.toggleAllBtn}
+              className={`${styles.addBtn} ${fields.every(f => selected.has(f.name)) ? styles.addBtnOn : ''}`}
               onClick={() => {
                 const allSelected = fields.every(f => selected.has(f.name))
                 const toToggle = allSelected
@@ -483,8 +513,9 @@ function TypePage({
                 onQueryChange(next)
               }}
             >
-              {fields.every(f => selected.has(f.name)) ? 'None' : 'All'}
+              {fields.every(f => selected.has(f.name)) ? <AddedIcon /> : <SelectAllIcon />}
             </button>
+            <span className={styles.selectAllLabel}>All fields</span>
           </div>
           {fields.map(f => (
             <SelectableRow
@@ -571,8 +602,15 @@ function FieldDetailPage({
         <div className={styles.detailSection}>
           <div className={styles.detailSectionHeader}>
             <p className={styles.detailSectionLabel}>Fields</p>
+            {typeNavigable && (
+              <button className={styles.typeNavLink} onClick={() => onNavigateType(named.name)}>
+                {named.name} <ChevronRightIcon small />
+              </button>
+            )}
+          </div>
+          <div className={styles.selectAllRow}>
             <button
-              className={styles.toggleAllBtn}
+              className={`${styles.addBtn} ${subFields.every(f => subSelected.has(f.name)) ? styles.addBtnOn : ''}`}
               onClick={() => {
                 const allSelected = subFields.every(f => subSelected.has(f.name))
                 if (allSelected) {
@@ -589,13 +627,9 @@ function FieldDetailPage({
                 }
               }}
             >
-              {subFields.every(f => subSelected.has(f.name)) ? 'None' : 'All'}
+              {subFields.every(f => subSelected.has(f.name)) ? <AddedIcon /> : <SelectAllIcon />}
             </button>
-            {typeNavigable && (
-              <button className={styles.typeNavLink} onClick={() => onNavigateType(named.name)}>
-                {named.name} <ChevronRightIcon small />
-              </button>
-            )}
+            <span className={styles.selectAllLabel}>All fields</span>
           </div>
           {subFields.map(f => (
             <SelectableRow
@@ -1057,7 +1091,7 @@ export default function SchemaExplorer({ schema, onInsert, query, onQueryChange,
         return i < s.length - 1 ? s.slice(0, i + 1) : s
       })
     }
-  }, [activeObjectKey, activeNestedKey, activeOperationKey, schema])
+  }, [activeObjectKey, activeNestedKey, activeOperationKey, navCursorOffset, schema])
 
   const prevActiveRef = useRef<ActiveObjectInfo | null>(null)
   prevActiveRef.current = activeObject
