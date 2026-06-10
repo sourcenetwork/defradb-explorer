@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { Copy, Check, ArrowLeft, X, ArrowUpDown, ExternalLink, Play } from 'lucide-react'
-import { useRecentCommitsPage, useDocumentCommits, useCommitByCID, RAW_PAGE_SIZE } from '../hooks/useCommits'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Copy, Check, ArrowLeft, X, ArrowUpDown, Play, Square, RotateCw, Table, Code2 } from 'lucide-react'
+import { useRecentCommitsPage, useDocumentCommits, useCommitByCID, useCommitsTail, RAW_PAGE_SIZE } from '../hooks/useCommits'
 import type { Commit } from '../hooks/useCommits'
+import { useConfig } from '../context/ConfigContext'
 import { useCollections } from '../hooks/useCollections'
 import { useIntrospection } from '../hooks/useIntrospection'
 import { useDocumentById } from '../hooks/useDocuments'
@@ -113,13 +115,22 @@ function RecentFeed({ onSelectDoc }: { onSelectDoc: (id: string) => void }) {
   const [allCommits, setAllCommits] = useState<Commit[]>([])
   const [hasMore, setHasMore]       = useState(false)
   const [sortByHeight, setSortByHeight] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const pageDataRef = useRef<Map<number, Commit[]>>(new Map())
   const { data: collections = [] } = useCollections()
+  const queryClient = useQueryClient()
+  const { config } = useConfig()
   const versionToCollection = useMemo(() => {
     const m = new Map<string, string>()
     for (const c of collections) m.set(c.version_id, c.name)
     return m
   }, [collections])
+
+  function refresh() {
+    setRefreshing(true)
+    queryClient.invalidateQueries({ queryKey: ['commits', 'recent-page', config.baseUrl] })
+      .finally(() => setRefreshing(false))
+  }
 
   function handlePageData(pageIndex: number, commits: Commit[], more: boolean) {
     pageDataRef.current.set(pageIndex, commits)
@@ -146,14 +157,25 @@ function RecentFeed({ onSelectDoc }: { onSelectDoc: (id: string) => void }) {
         <>
           <div className={styles.feedHeader}>
             <span className={styles.feedCount}>{allCommits.length}{hasMore ? '+' : ''} commit{allCommits.length !== 1 ? 's' : ''}{hasMore ? ' loaded' : ''}</span>
-            <button
-              className={`${styles.sortBtn} ${sortByHeight ? styles.sortBtnActive : ''}`}
-              onClick={() => setSortByHeight(v => !v)}
-              title={sortByHeight ? 'Sorted by height — click to restore default order' : 'Sort by height'}
-            >
-              <ArrowUpDown size={11} />
-              {sortByHeight ? 'By height' : 'Default order'}
-            </button>
+            <div className={styles.feedActions}>
+              <button
+                className={styles.sortBtn}
+                onClick={refresh}
+                disabled={refreshing}
+                title="Refresh commits"
+              >
+                <RotateCw size={11} className={refreshing ? styles.spinning : undefined} />
+                Refresh
+              </button>
+              <button
+                className={`${styles.sortBtn} ${sortByHeight ? styles.sortBtnActive : ''}`}
+                onClick={() => setSortByHeight(v => !v)}
+                title={sortByHeight ? 'Sorted by height — click to restore default order' : 'Sort by height'}
+              >
+                <ArrowUpDown size={11} />
+                {sortByHeight ? 'By height' : 'Default order'}
+              </button>
+            </div>
           </div>
           {allCommits.length === 0
             ? <p className={styles.empty}>No commits found.</p>
@@ -183,17 +205,18 @@ function RecentFeed({ onSelectDoc }: { onSelectDoc: (id: string) => void }) {
 
 const AGGREGATE_FIELDS = new Set(['AVG', 'COUNT', 'MAX', 'MIN', 'SUM', 'SIMILARITY'])
 
-function DocInfoCard({ docID, onOpenInCollections, onOpenInQueryRunner, showFields = true }: {
+function DocInfoCard({ docID, onOpenInCollections, onOpenInQueryRunner, showFields = true, extraActions }: {
   docID: string
   onOpenInCollections?: (collection: string, docID: string) => void
   onOpenInQueryRunner?: (query: string) => void
   showFields?: boolean
+  extraActions?: React.ReactNode
 }) {
   const { data: commits = [] }      = useDocumentCommits(docID)
   const { data: collections = [] }  = useCollections()
   const { data: schema }            = useIntrospection()
 
-  const collectionVersionId = commits[0]?.collectionVersionId ?? null
+  const collectionVersionId = commits.find(c => c.collectionVersionId)?.collectionVersionId ?? null
 
   const collectionName = useMemo(() => {
     if (!collectionVersionId) return null
@@ -221,14 +244,15 @@ function DocInfoCard({ docID, onOpenInCollections, onOpenInQueryRunner, showFiel
         <span className={styles.docInfoCollection}>{collectionName}</span>
         <span className={styles.docInfoDocID} title={docID}>{docID}</span>
         <div className={styles.docInfoActions}>
+          {extraActions}
           {onOpenInCollections && (
             <button className={styles.docInfoBtn} onClick={() => onOpenInCollections(collectionName, docID)}>
-              <ExternalLink size={11} /> Collections
+              <Table size={11} /> Collections
             </button>
           )}
           {onOpenInQueryRunner && (
             <button className={styles.docInfoBtn} onClick={() => onOpenInQueryRunner(`{\n  ${collectionName}(filter: { _docID: { _eq: ${JSON.stringify(docID)} } }) {\n    ${scalarFields.join('\n    ')}\n  }\n}`)}>
-              <Play size={11} /> Query Runner
+              <Code2 size={11} /> Query Runner
             </button>
           )}
         </div>
@@ -338,9 +362,15 @@ export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollect
   const setCommitsViewMode = useUIStore(s => s.setCommitsViewMode)
   const [input, setInput] = useState(commitsDocID ?? '')
   const [pendingCID, setPendingCID] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [tailing, setTailing] = useState(false)
   const docID = commitsDocID
   const viewMode = commitsViewMode
   const inputRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
+  const { config } = useConfig()
+  const { error: tailError } = useCommitsTail(docID, tailing)
+  useEffect(() => { if (tailError) setTailing(false) }, [tailError])
 
   const { data: resolvedCommit, isLoading: cidLoading, isError: cidError } = useCommitByCID(pendingCID)
 
@@ -355,6 +385,13 @@ export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollect
 
   function setDocID(id: string | null) { setCommitsDocID(id) }
   function setViewMode(m: 'list' | 'graph') { setCommitsViewMode(m) }
+
+  function refreshDoc() {
+    if (!docID) return
+    setRefreshing(true)
+    queryClient.invalidateQueries({ queryKey: ['commits', 'doc', config.baseUrl, docID] })
+      .finally(() => setRefreshing(false))
+  }
 
   // React to external navigation (from "View in commit graph" button)
   useEffect(() => {
@@ -387,11 +424,36 @@ export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollect
     setInput('')
     setDocID(null)
     setPendingCID(null)
+    setTailing(false)
     inputRef.current?.focus()
   }
 
   const isFiltered = docID != null
   const showGraph  = isFiltered && viewMode === 'graph'
+
+  const docExtraActions = (
+    <>
+      <button
+        className={styles.docInfoBtn}
+        onClick={refreshDoc}
+        disabled={refreshing}
+        title="Refresh commits"
+      >
+        <RotateCw size={11} className={refreshing ? styles.spinning : undefined} />
+        Refresh
+      </button>
+      <button
+        className={`${styles.docInfoBtn} ${tailing ? styles.tailBtnActive : ''}`}
+        onClick={() => setTailing(v => !v)}
+        title={tailError ? `Subscription error: ${tailError}` : tailing ? 'Stop — close live subscription' : 'Tail — subscribe to live commit updates'}
+      >
+        {tailing
+          ? <><Square size={11} fill="#ef4444" color="#ef4444" /> Stop</>
+          : <><Play size={11} fill="currentColor" /> Tail</>
+        }
+      </button>
+    </>
+  )
 
   return (
     <div className={styles.view}>
@@ -447,7 +509,7 @@ export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollect
         ) : showGraph ? (
           <>
             <div className={styles.metaStrip}>
-              <DocInfoCard docID={docID} onOpenInCollections={onOpenInCollections} onOpenInQueryRunner={onOpenInQueryRunner} showFields={false} />
+              <DocInfoCard docID={docID} onOpenInCollections={onOpenInCollections} onOpenInQueryRunner={onOpenInQueryRunner} showFields={false} extraActions={docExtraActions} />
             </div>
             <CommitGraph docID={docID} onOpenInQueryRunner={onOpenInQueryRunner} onOpenInCollections={onOpenInCollections} />
           </>
@@ -455,7 +517,7 @@ export default function CommitsView({ jump, onOpenInQueryRunner, onOpenInCollect
           viewMode === 'graph' ? null : (
             <>
               <div className={styles.metaStrip}>
-                <DocInfoCard docID={docID} onOpenInCollections={onOpenInCollections} onOpenInQueryRunner={onOpenInQueryRunner} showFields={false} />
+                <DocInfoCard docID={docID} onOpenInCollections={onOpenInCollections} onOpenInQueryRunner={onOpenInQueryRunner} showFields={false} extraActions={docExtraActions} />
               </div>
               <div className={styles.section}>
                 <DocTimeline docID={docID} />

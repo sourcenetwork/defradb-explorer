@@ -35,8 +35,8 @@ export default function DashboardView() {
               <p className={styles.netEmpty}>No active connections</p>
             ) : (
               <div className={styles.peerList}>
-                {peers!.map(p => (
-                  <div key={p.id} className={styles.peerRow}>
+                {peers!.map((p, i) => (
+                  <div key={`${p.id}-${i}`} className={styles.peerRow}>
                     <span className={styles.peerDot} />
                     <span className={styles.peerId} title={p.id}>{p.id}</span>
                     <span className={styles.peerAddr}>{p.addr.split('/p2p/')[0]}</span>
@@ -52,8 +52,8 @@ export default function DashboardView() {
               <p className={styles.netEmpty}>No replicators configured</p>
             ) : (
               <div className={styles.peerList}>
-                {replicators!.map(r => (
-                  <div key={r.ID} className={styles.peerRow}>
+                {replicators!.map((r, i) => (
+                  <div key={`${r.ID}-${i}`} className={styles.peerRow}>
                     <span className={`${styles.peerDot} ${(peers ?? []).some(p => p.id === r.ID) ? styles.peerDotOnline : styles.peerDotOffline}`} />
                     <span className={styles.peerId} title={r.ID}>
                       {r.ID.slice(0, 12)}…{r.ID.slice(-6)}

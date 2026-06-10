@@ -77,19 +77,7 @@
   gap: 8px;
 }
 
-.btnSecondary {
-  background: transparent;
-  border: 1px solid var(--dark-border-2);
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-family: inherit;
-  font-weight: 500;
-  padding: 5px 14px;
-  transition: border-color 0.1s, color 0.1s;
-}
-.btnSecondary:hover { border-color: var(--gray-500); color: var(--white); }
+.btnSecondary { composes: btn from '../styles/btn.module.css'; }
 
 .btnApply {
   background: var(--defradb);

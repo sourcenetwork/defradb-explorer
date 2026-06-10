@@ -354,18 +354,4 @@
 }
 
 /* Shared button */
-.btnSm {
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  background: transparent;
-  color: var(--subtitle);
-  border: 1px solid var(--dark-border);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.btnSm:hover { border-color: var(--dark-border-2); color: var(--white); }
+.btnSm { composes: btn from '../styles/btn.module.css'; }

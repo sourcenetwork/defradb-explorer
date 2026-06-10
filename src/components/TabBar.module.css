@@ -41,38 +41,6 @@
   gap: 6px;
 }
 
-.btnSecondary {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  background: transparent;
-  color: var(--subtitle);
-  border: 1px solid var(--dark-border);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
+.btnSecondary { composes: btn from '../styles/btn.module.css'; }
 
-.btnSecondary:hover {
-  border-color: var(--dark-border-2);
-  color: var(--white);
-}
-
-.btnPrimary {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  background: var(--green-btn);
-  color: var(--black);
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.btnPrimary:hover { background: var(--green-hover); }
-.btnPrimary:disabled { opacity: 0.35; cursor: not-allowed; }
+.btnPrimary { composes: btn btnPrimary from '../styles/btn.module.css'; }

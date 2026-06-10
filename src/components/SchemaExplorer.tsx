@@ -13,6 +13,7 @@ import {
   getInputObjectFieldsAtOffset,
   toggleInputObjectFieldAtOffset, addItemToInputList, getListItemObjectStarts,
   getSelectedSubFieldsAtPath, toggleSubFieldAtPath,
+  getArgsForSubField, toggleSubFieldArg,
   typeIsList, computeCursorAfterToggle, canToggleInputType, isRootFieldInQuery,
 } from '../lib/queryBuilder'
 import type { ActiveObjectInfo, ActiveNestedSelectionInfo } from '../lib/queryBuilder'
@@ -561,6 +562,8 @@ function FieldDetailPage({
   const isSelected  = selected.has(fieldName)
   const subSelected = getSelectedSubFieldsAtPath(query, parentTypeName, fieldName, schema)
   const typeNavigable = !HIDDEN_TYPES.has(named.name)
+  const visibleArgs   = field.args.filter(a => !a.name.startsWith('_'))
+  const activeSubArgs = getArgsForSubField(query, parentTypeName, fieldName, schema)
 
   return (
     <div className={styles.detailPage}>
@@ -596,6 +599,34 @@ function FieldDetailPage({
           >{typeName}</button>
         </div>
       </div>
+
+      {/* Arguments (if the field has any) */}
+      {visibleArgs.length > 0 && (
+        <div className={styles.detailSection}>
+          <p className={styles.detailSectionLabel}>Arguments</p>
+          {visibleArgs.map(a => {
+            const argTypeName = formatType(a.type as GraphQLOutputType)
+            const argNamed    = getNamedType(a.type)
+            const argIsList   = typeIsList(a.type)
+            const navigable   = !HIDDEN_TYPES.has(argNamed.name) &&
+              (isInputObjectType(schema.getType(argNamed.name)) || isObjectType(schema.getType(argNamed.name)) || isScalarType(schema.getType(argNamed.name)) || isEnumType(schema.getType(argNamed.name)))
+            return (
+              <SelectableRow
+                key={a.name}
+                name={a.name}
+                typeName={argTypeName}
+                selected={activeSubArgs.has(a.name)}
+                onToggle={() => {
+                  const next = toggleSubFieldArg(query, parentTypeName, fieldName, a.name, argNamed.name, argIsList, schema)
+                  onQueryChange(next, computeCursorAfterToggle(query, next) ?? undefined)
+                }}
+                onNavigateField={navigable ? () => onNavigateType(argNamed.name) : undefined}
+                disabled={!isSelected}
+              />
+            )
+          })}
+        </div>
+      )}
 
       {/* Sub-fields (if object type) — toggleable when the parent field is in the query */}
       {subFields.length > 0 && (

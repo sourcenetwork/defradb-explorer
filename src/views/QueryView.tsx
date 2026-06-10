@@ -328,6 +328,8 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
   const setSchemaWidth = useUIStore(s => s.setQuerySchemaWidth)
   const [editorWidth, setEditorWidth] = useState<number | null>(null)
   const [cursorOffset, setCursorOffset] = useState<number | null>(null)
+  const [overflowOpen, setOverflowOpen] = useState(false)
+  const overflowRef = useRef<HTMLDivElement>(null)
 
   const schemaWidthRef = useRef(schemaWidth)
   schemaWidthRef.current = schemaWidth
@@ -337,6 +339,17 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
 
   const varsOpenRef = useRef(varsOpen)
   varsOpenRef.current = varsOpen
+
+  useEffect(() => {
+    if (!overflowOpen) return
+    const handler = (e: MouseEvent) => {
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        setOverflowOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [overflowOpen])
 
   const onResizeEditorResults = useCallback((delta: number) => {
     setEditorWidth(prev => {
@@ -523,11 +536,29 @@ const QueryView = forwardRef<QueryViewHandle, QueryViewProps>(function QueryView
         <div className={styles.panelHeader}>
           <span className={styles.panelLabel}>Query</span>
           <div className={styles.headerActions}>
-            <button className={styles.btnSm} onClick={() => editorRef.current?.prettify()} title="Format query">
-              Prettify
-            </button>
-            <button className={styles.btnSm} onClick={() => setQuery(DEFAULT_QUERY)}>Reset</button>
-            <button className={styles.btnSm} onClick={() => setQuery(INTROSPECTION_QUERY)} title="Load introspection query">Introspection</button>
+            {/* Secondary actions — hidden via container query when panel is narrow */}
+            <div className={styles.secondaryActions}>
+              <button className={styles.btnSm} onClick={() => editorRef.current?.prettify()} title="Format query">
+                Prettify
+              </button>
+              <button className={styles.btnSm} onClick={() => setQuery(DEFAULT_QUERY)}>Reset</button>
+              <button className={styles.btnSm} onClick={() => setQuery(INTROSPECTION_QUERY)} title="Load introspection query">Introspection</button>
+            </div>
+            {/* Overflow ⋯ — shown via container query when panel is narrow */}
+            <div ref={overflowRef} className={styles.overflowWrap}>
+              <button
+                className={`${styles.btnSm} ${styles.overflowBtn}`}
+                onClick={() => setOverflowOpen(v => !v)}
+                title="More actions"
+              >
+                ⋮
+              </button>
+              <div className={`${styles.overflowMenu} ${overflowOpen ? styles.overflowMenuOpen : ''}`}>
+                <button className={styles.overflowItem} onClick={() => { editorRef.current?.prettify(); setOverflowOpen(false) }}>Prettify</button>
+                <button className={styles.overflowItem} onClick={() => { setQuery(DEFAULT_QUERY); setOverflowOpen(false) }}>Reset</button>
+                <button className={styles.overflowItem} onClick={() => { setQuery(INTROSPECTION_QUERY); setOverflowOpen(false) }}>Introspection</button>
+              </div>
+            </div>
             <button
               className={`${styles.btnSm} ${showSchema ? styles.btnActive : ''}`}
               onClick={() => setShowSchema(!showSchema)}

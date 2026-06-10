@@ -912,6 +912,104 @@ export function ensureArgAndToggleInputField(
 
 // ── Nested selection helpers ──────────────────────────────────────────────────
 
+/** Arg names active on a nested field, found by parent type (works at any depth). */
+export function getArgsForSubField(
+  query: string,
+  parentTypeName: string,
+  fieldName: string,
+  schema: GraphQLSchema,
+): Set<string> {
+  try {
+    const doc = parse(query)
+    const typeInfo = new TypeInfo(schema)
+    const result = new Set<string>()
+    visit(doc, visitWithTypeInfo(typeInfo, {
+      Field: {
+        enter(node: FieldNode) {
+          if (node.name.value !== fieldName) return
+          const parentType = typeInfo.getParentType()
+          if (!parentType || parentType.name !== parentTypeName) return
+          for (const a of node.arguments ?? []) result.add(a.name.value)
+        },
+      },
+    }))
+    return result
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * Toggle an argument on a nested field, located by parent type name.
+ * Uses the same string-splice strategy as toggleArgInQuery to preserve formatting.
+ */
+export function toggleSubFieldArg(
+  query: string,
+  parentTypeName: string,
+  fieldName: string,
+  argName: string,
+  argTypeName: string,
+  isList = false,
+  schema: GraphQLSchema,
+): string {
+  try {
+    const doc = parse(query)
+    const typeInfo = new TypeInfo(schema)
+    let result = query
+    let handled = false
+
+    visit(doc, visitWithTypeInfo(typeInfo, {
+      Field: {
+        enter(node: FieldNode) {
+          if (handled) return
+          if (node.name.value !== fieldName || !node.name.loc || !node.loc) return
+          const parentType = typeInfo.getParentType()
+          if (!parentType || parentType.name !== parentTypeName) return
+
+          handled = true
+          const existing  = (node.arguments ?? []) as ArgumentNode[]
+          const targetArg = existing.find(a => a.name.value === argName)
+          const argIdx    = targetArg ? existing.indexOf(targetArg) : -1
+
+          if (targetArg && targetArg.loc) {
+            // ── REMOVE ────────────────────────────────────────────────────────
+            const argLoc = targetArg.loc
+            if (existing.length === 1) {
+              const open  = query.lastIndexOf('(', argLoc.start)
+              const close = query.indexOf(')', argLoc.end)
+              if (open >= 0 && close >= 0) result = query.slice(0, open) + query.slice(close + 1)
+            } else if (argIdx === 0) {
+              result = query.slice(0, argLoc.start) + query.slice(existing[1].loc!.start)
+            } else {
+              result = query.slice(0, existing[argIdx - 1].loc!.end) + query.slice(argLoc.end)
+            }
+          } else {
+            // ── ADD ───────────────────────────────────────────────────────────
+            const nameEnd = node.name.loc.end
+            const ssStart = node.selectionSet?.loc?.start ?? node.loc.end
+            const mid     = query.slice(nameEnd, ssStart)
+            const newArgText = `${argName}: ${printArgValue(argDefaultValue(argName, argTypeName, isList))}`
+
+            if (mid.trimStart().startsWith('(')) {
+              const closeIdx = mid.lastIndexOf(')')
+              const insertAt = nameEnd + closeIdx
+              const beforeInsert = query.slice(0, insertAt).trimEnd()
+              const sep = beforeInsert.endsWith(',') ? ' ' : ', '
+              result = query.slice(0, insertAt) + sep + newArgText + query.slice(insertAt)
+            } else {
+              result = query.slice(0, nameEnd) + `(${newArgText})` + query.slice(nameEnd)
+            }
+          }
+        },
+      },
+    }))
+
+    return result
+  } catch {
+    return query
+  }
+}
+
 /**
  * Field names selected inside a nested field, found by parent type name (works at any depth).
  * e.g. getSelectedSubFieldsAtPath(q, 'Tag', '_version', schema) → fields inside Tag._version { }
