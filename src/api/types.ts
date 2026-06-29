@@ -14,6 +14,7 @@ export interface CollectionDescription {
   version_id: string
   fields: CollectionField[]
   is_branchable: boolean
+  encrypted_indexes: EncryptedIndex[]
 }
 
 export interface IndexField {
@@ -24,8 +25,13 @@ export interface IndexField {
 export interface CollectionIndex {
   Name: string
   ID: number
-  Fields: IndexField[]
+  Fields?: IndexField[]
   Unique: boolean
+}
+
+export interface EncryptedIndex {
+  field_name: string
+  type: string
 }
 
 export interface PeerInfo {
