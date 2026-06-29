@@ -35,6 +35,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .panelHeader {
@@ -284,59 +285,76 @@
 }
 .tabAdd:hover { background: var(--dark-surface); color: var(--white); }
 
-/* ── Shared buttons ──────────────────────────────────────────────────────────*/
-.btnSm {
-  height: 26px;
-  padding: 0 10px;
+/* ── Secondary action overflow ───────────────────────────────────────────────*/
+.secondaryActions {
+  display: contents;
+}
+
+.overflowWrap {
+  position: relative;
+  display: none;
+}
+
+.overflowBtn {
+  display: inline-flex;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 8px;
+}
+
+@container (max-width: 480px) {
+  .secondaryActions { display: none; }
+  .overflowWrap     { display: block; }
+}
+
+.overflowMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  background: var(--obsidian);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 7px;
+  padding: 4px;
+  min-width: 130px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.overflowMenuOpen {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.overflowItem {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
   border-radius: 5px;
   font-size: 12px;
-  font-weight: 500;
   font-family: inherit;
-  background: transparent;
   color: var(--subtitle);
-  border: 1px solid var(--dark-border);
+  text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
 }
+.overflowItem:hover { background: var(--dark-surface); color: var(--white); }
 
-.btnSm:hover { border-color: var(--dark-border-2); color: var(--white); }
-.btnSm:disabled { opacity: 0.5; cursor: default; }
+/* ── Shared buttons ──────────────────────────────────────────────────────────*/
+.btnSm { composes: btn from '../styles/btn.module.css'; }
 
-.btnActive {
-  border-color: var(--defradb);
-  color: var(--defradb);
-}
-
-.btnPrimary {
-  background: var(--green-btn);
-  color: var(--black);
-  border-color: var(--green-btn);
-  min-width: 52px;
-  justify-content: center;
-}
-
-.btnPrimary:hover:not(:disabled) {
-  background: var(--green-hover);
-  border-color: var(--green-hover);
-  color: var(--black);
-}
-
-.btnStop {
-  background: rgba(255, 95, 87, 0.1);
-  color: #FF5F57;
-  border-color: rgba(255, 95, 87, 0.3);
-  min-width: 52px;
-  justify-content: center;
-}
-.btnStop:hover:not(:disabled) {
-  background: rgba(255, 95, 87, 0.18);
-  border-color: rgba(255, 95, 87, 0.5);
-  color: #FF5F57;
-}
+.btnActive { composes: btnActive from '../styles/btn.module.css'; }
+.btnPrimary { composes: btnPrimary from '../styles/btn.module.css'; }
+.btnStop    { composes: btnStop    from '../styles/btn.module.css'; }
 
 /* ── Subscription results ────────────────────────────────────────────────────*/
 .subEventList {

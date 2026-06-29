@@ -8,10 +8,10 @@
 /* ── Search bar ────────────────────────────────────────────────────────────── */
 .searchBar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 24px;
+  gap: 8px 12px;
+  padding: 10px 24px;
   border-bottom: 1px solid var(--dark-border);
   background: var(--dark-bg);
   flex-shrink: 0;
@@ -21,7 +21,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
+  flex: 1 1 240px;
   min-width: 0;
 }
 
@@ -31,7 +31,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  margin-left: auto;
 }
 
 
@@ -81,7 +81,9 @@
   flex-shrink: 0;
   padding: 14px 24px;
   border-bottom: 1px solid var(--dark-border);
+  transition: background 0.3s, border-color 0.3s;
 }
+
 
 .searchLabel {
   font-size: 12px;
@@ -91,7 +93,8 @@
 
 .searchInputWrap {
   position: relative;
-  flex: 1;
+  flex: 1 1 200px;
+  min-width: 0;
   max-width: 480px;
 }
 
@@ -290,23 +293,43 @@
   color: var(--gray-600);
 }
 
-.sortBtn {
-  display: inline-flex;
+.feedActions {
+  display: flex;
   align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 5px;
-  border: 1px solid var(--dark-border);
-  background: transparent;
-  font-size: 12px;
-  font-family: inherit;
-  color: var(--gray-600);
-  cursor: pointer;
-  transition: border-color 0.1s, color 0.1s;
+  gap: 6px;
 }
-.sortBtn:hover { border-color: var(--dark-border-2); color: var(--white); }
-.sortBtnActive { border-color: var(--defradb); color: var(--defradb); }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 0.7s linear infinite;
+}
+
+.sortBtn { composes: btn from '../styles/btn.module.css'; }
+.sortBtnActive { composes: btnActive from '../styles/btn.module.css'; }
+
+.tailBtnActive { composes: btnDanger from '../styles/btn.module.css'; }
+
+.tailDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+}
+.tailDotActive {
+  opacity: 1;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
 
 .commitList {
   background: var(--dark-surface);
@@ -567,22 +590,7 @@
   flex-shrink: 0;
 }
 
-.docInfoBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: 1px solid var(--dark-border);
-  border-radius: 5px;
-  color: var(--gray-600);
-  font-size: 11px;
-  font-family: 'CommitMono', monospace;
-  padding: 3px 8px;
-  cursor: pointer;
-  transition: color 0.1s, border-color 0.1s;
-}
-
-.docInfoBtn:hover { color: var(--white); border-color: var(--gray-600); }
+.docInfoBtn { composes: sortBtn; }
 
 .docInfoFields {
   display: flex;

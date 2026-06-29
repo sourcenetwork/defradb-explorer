@@ -198,30 +198,9 @@
 .refreshViewBtn:hover { background: rgba(16, 203, 255, 0.08); border-color: rgba(16, 203, 255, 0.5); }
 .refreshViewBtn:disabled { opacity: 0.5; cursor: default; }
 
-.statsActionBtn {
-  padding: 5px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--dark-border-2);
-  background: var(--dark-surface);
-  color: var(--subtitle);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color 0.1s, border-color 0.1s;
-}
-.statsActionBtn:hover { color: var(--white); border-color: var(--gray-500); }
+.statsActionBtn { composes: btn from '../styles/btn.module.css'; }
 
-.statsActionBtnPrimary {
-  padding: 5px 12px;
-  border-radius: 6px;
-  border: none;
-  background: var(--green-btn);
-  color: #000;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.statsActionBtnPrimary:hover { background: var(--green-hover); }
+.statsActionBtnPrimary { composes: btn btnPrimary from '../styles/btn.module.css'; }
 .statsActionBtnPrimary:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* Toolbar */
@@ -356,37 +335,16 @@
   background: var(--dark-border);
 }
 
-.btnSm {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  background: transparent;
-  color: var(--subtitle);
-  border: 1px solid var(--dark-border);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-  white-space: nowrap;
-}
-
-.btnSm:hover { border-color: var(--dark-border-2); color: var(--white); }
-.btnSm:disabled { opacity: 0.45; cursor: default; }
+.btnSm { composes: btn from '../styles/btn.module.css'; }
 
 .btnCyan {
   background: var(--defradb-dim);
   color: var(--defradb);
   border-color: var(--defradb-border);
 }
-
 .btnCyan:hover { background: rgba(16, 203, 255, 0.15); color: var(--defradb); }
 
-.btnPrimary {
-  background: var(--green-btn);
-  color: var(--black);
-  border-color: var(--green-btn);
-}
+.btnPrimary { composes: btn btnPrimary from '../styles/btn.module.css'; }
 
 /* ── Query preview ───────────────────────────────────────────────────────────*/
 
@@ -980,21 +938,7 @@
 
 .panelCloseBtn:hover { color: var(--white); background: rgba(255,255,255,0.06); }
 
-.btnSmEdit {
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  background: transparent;
-  color: var(--subtitle);
-  border: 1px solid var(--dark-border);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.btnSmEdit:hover { border-color: var(--dark-border-2); color: var(--white); }
+.btnSmEdit { composes: btn from '../styles/btn.module.css'; }
 
 .detailTabs {
   display: flex;
@@ -1246,13 +1190,7 @@
 .btnSmActionDangerFill:disabled { opacity: 0.5; cursor: default; }
 
 /* Edit save button */
-.btnSmEditSave {
-  background: var(--green-btn);
-  color: var(--black);
-  border-color: var(--green-btn);
-}
-
-.btnSmEditSave:hover:not(:disabled) { background: var(--green-hover); }
+.btnSmEditSave { composes: btn btnPrimary from '../styles/btn.module.css'; }
 .btnSmEditSave:disabled { opacity: 0.5; cursor: default; }
 
 /* Error banner in detail panel */

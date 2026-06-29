@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useConfig } from '../context/ConfigContext'
-import { executeGraphQL } from '../api/graphql'
+import { executeGraphQL, subscribeGraphQL } from '../api/graphql'
 
 export interface CommitLink {
   cid: string
@@ -48,7 +49,7 @@ export function useRecentCommitsPage(rawOffset: number) {
 
 const DOC_PAGE_SIZE = 500
 
-export function useDocumentCommits(docID: string | null) {
+export function useDocumentCommits(docID: string | null, options?: { refetchInterval?: number | false }) {
   const { config } = useConfig()
   return useQuery({
     queryKey: ['commits', 'doc', config.baseUrl, docID],
@@ -70,6 +71,7 @@ export function useDocumentCommits(docID: string | null) {
     },
     enabled: !!docID,
     staleTime: 15_000,
+    refetchInterval: options?.refetchInterval ?? false,
   })
 }
 
@@ -88,6 +90,38 @@ export function useCommitByCID(cid: string | null) {
     enabled: !!cid,
     staleTime: Infinity,
   })
+}
+
+export function useCommitsTail(docID: string | null, enabled: boolean) {
+  const { config } = useConfig()
+  const queryClient = useQueryClient()
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!enabled || !docID) { setError(null); return }
+
+    const controller = new AbortController()
+    setError(null)
+
+    const query = `subscription { _commits(docID: ${JSON.stringify(docID)}) { ${COMMIT_FIELDS} } }`
+
+    ;(async () => {
+      try {
+        for await (const event of subscribeGraphQL(config, query, undefined, controller.signal)) {
+          if (event.errors?.length) { setError(event.errors[0].message); break }
+          // Subscription events may arrive before links are fully resolved —
+          // invalidate the query so a full fetch always gets complete commit data.
+          queryClient.invalidateQueries({ queryKey: ['commits', 'doc', config.baseUrl, docID] })
+        }
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') setError((err as Error).message)
+      }
+    })()
+
+    return () => controller.abort()
+  }, [enabled, docID, config.baseUrl]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { error }
 }
 
 export function useNodeIdentity() {

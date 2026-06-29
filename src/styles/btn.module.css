@@ -1,0 +1,64 @@
+/* Shared toolbar button variants — used across CommitsView, SchemaView, QueryView */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--dark-border-2);
+  background: var(--dark-surface);
+  color: var(--subtitle);
+  font-size: 12px;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+.btn:hover   { color: var(--white); border-color: var(--gray-500, #6b7280); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Blue/defradb active state */
+.btnActive {
+  border-color: var(--defradb);
+  color: var(--defradb);
+}
+
+/* Green filled primary */
+.btnPrimary {
+  background: var(--green-btn);
+  color: #000;
+  border-color: var(--green-btn);
+  font-weight: 600;
+  justify-content: center;
+}
+.btnPrimary:hover:not(:disabled) {
+  background: var(--green-hover);
+  border-color: var(--green-hover);
+  color: #000;
+}
+
+/* Red danger / stop */
+.btnDanger {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #fff;
+}
+.btnDanger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: #ef4444;
+}
+
+/* QueryView run-stop variant (softer red, centred) */
+.btnStop {
+  background: rgba(255, 95, 87, 0.1);
+  color: #FF5F57;
+  border-color: rgba(255, 95, 87, 0.3);
+  justify-content: center;
+}
+.btnStop:hover:not(:disabled) {
+  background: rgba(255, 95, 87, 0.18);
+  border-color: rgba(255, 95, 87, 0.5);
+  color: #FF5F57;
+}
