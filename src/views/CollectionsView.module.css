@@ -560,6 +560,24 @@
   letter-spacing: 0.04em;
 }
 
+.indexLock {
+  display: block;
+  flex-shrink: 0;
+  color: #E0A33E;
+  opacity: 0.9;
+}
+
+.indexEncryptedBadge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #E0A33E;
+  background: rgba(224, 163, 62, 0.08);
+  border: 1px solid rgba(224, 163, 62, 0.22);
+  border-radius: 3px;
+  padding: 0 4px;
+  letter-spacing: 0.04em;
+}
+
 /* ── Column picker ────────────────────────────────────────────────────────────*/
 
 .colsWrap {

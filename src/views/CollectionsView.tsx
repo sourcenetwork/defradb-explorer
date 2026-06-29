@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
-import { Copy, Check, ChevronDown, Search, X, ArrowRight, RotateCw, GitBranch, Pencil } from 'lucide-react'
+import { Copy, Check, ChevronDown, Search, X, ArrowRight, RotateCw, GitBranch, Pencil, Lock } from 'lucide-react'
 import CommitGraph from '../components/CommitGraph'
 import { getNamedType, isInputObjectType, isNonNullType, isListType, GraphQLNonNull } from 'graphql'
 import type { GraphQLOutputType } from 'graphql'
@@ -597,18 +597,22 @@ function QueryPreview({ query, hasFilter, onOpenInQueryRunner }: { query: string
 
 function IndexesBar({ collection }: { collection: string }) {
   const { data: indexes } = useCollectionIndexes(collection)
+  const { data: collections } = useCollections()
+  const encryptedIndexes = collections?.find(c => c.name === collection)?.encrypted_indexes ?? []
+
+  const isEmpty = !indexes?.length && !encryptedIndexes.length
 
   return (
     <div className={styles.indexesBar}>
       <span className={styles.indexesLabel}>Indexes</span>
       <div className={styles.indexesList}>
-        {!indexes?.length && (
+        {isEmpty && (
           <span className={styles.indexesNone}>none</span>
         )}
         {indexes?.map(idx => (
-          <div key={idx.ID} className={styles.indexChip}>
+          <div key={idx.Name} className={styles.indexChip}>
             <div className={styles.indexFields}>
-              {idx.Fields.map(f => (
+              {idx.Fields?.map(f => (
                 <span key={f.Name} className={styles.indexField}>
                   {f.Name}
                   <span className={styles.indexDir}>{f.Descending ? '↓' : '↑'}</span>
@@ -616,6 +620,15 @@ function IndexesBar({ collection }: { collection: string }) {
               ))}
             </div>
             {idx.Unique && <span className={styles.indexUnique}>unique</span>}
+          </div>
+        ))}
+        {encryptedIndexes.map(enc => (
+          <div key={`enc-${enc.field_name}`} className={styles.indexChip} title={`Encrypted index (${enc.type})`}>
+            <Lock className={styles.indexLock} size={11} />
+            <div className={styles.indexFields}>
+              <span className={styles.indexField}>{enc.field_name}</span>
+            </div>
+            <span className={styles.indexEncryptedBadge}>encrypted{enc.type ? ` · ${enc.type}` : ''}</span>
           </div>
         ))}
       </div>
