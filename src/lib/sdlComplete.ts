@@ -30,17 +30,13 @@ const DIRECTIVE_COMPLETIONS: Record<string, Completion[]> = {
     { label: 'direction: DESC',  apply: 'direction: DESC',  detail: 'descending sort',       type: 'property' },
   ],
   default: [
-    { label: 'bool: true',        apply: 'bool: true',        detail: 'boolean default',   type: 'property' },
-    { label: 'bool: false',       apply: 'bool: false',       detail: 'boolean default',   type: 'property' },
-    { label: 'int: 0',            apply: 'int: 0',            detail: 'integer default',   type: 'property' },
-    { label: 'float: 0.0',        apply: 'float: 0.0',        detail: 'float default',     type: 'property' },
-    { label: 'float32: 0.0',      apply: 'float32: 0.0',      detail: 'float32 default',   type: 'property' },
-    { label: 'float64: 0.0',      apply: 'float64: 0.0',      detail: 'float64 default',   type: 'property' },
-    { label: 'string: ""',        apply: 'string: ""',        detail: 'string default',    type: 'property' },
-    { label: 'dateTime: UTC_NOW', apply: 'dateTime: UTC_NOW', detail: 'current UTC time',  type: 'property' },
-    { label: 'dateTime: ""',      apply: 'dateTime: ""',      detail: 'ISO 8601 datetime', type: 'property' },
-    { label: 'json: "{}"',        apply: 'json: "{}"',        detail: 'JSON default',      type: 'property' },
-    { label: 'blob: ""',          apply: 'blob: ""',          detail: 'hex string',        type: 'property' },
+    { label: 'value: true',    apply: 'value: true',    detail: 'boolean default',    type: 'property' },
+    { label: 'value: false',   apply: 'value: false',   detail: 'boolean default',    type: 'property' },
+    { label: 'value: 0',       apply: 'value: 0',       detail: 'integer default',    type: 'property' },
+    { label: 'value: 0.0',     apply: 'value: 0.0',     detail: 'float default',      type: 'property' },
+    { label: 'value: ""',      apply: 'value: ""',      detail: 'string / blob default', type: 'property' },
+    { label: 'value: UTC_NOW', apply: 'value: UTC_NOW', detail: 'current UTC time',   type: 'property' },
+    { label: 'value: "{}"',    apply: 'value: "{}"',    detail: 'JSON default',       type: 'property' },
   ],
   relation: [
     { label: 'name: ""', apply: 'name: ""', detail: 'relation name', type: 'property' },
@@ -93,22 +89,24 @@ const ALL_DIRECTIVE_NAMES: Completion[] = [
 
 // ── Default arg filter ────────────────────────────────────────────────────────
 
-const TYPE_TO_DEFAULT_PREFIX: Record<string, string[]> = {
-  String:   ['string:'],
-  Int:      ['int:'],
-  Float:    ['float:'],
-  Float32:  ['float32:'],
-  Float64:  ['float64:'],
-  Boolean:  ['bool:'],
-  DateTime: ['dateTime:'],
-  JSON:     ['json:'],
-  Blob:     ['blob:'],
+// The `@default` directive takes a single `value` argument for every type, so we
+// map each field type to the exact suggestions that make sense as its default.
+const TYPE_TO_DEFAULT_VALUES: Record<string, string[]> = {
+  String:   ['value: ""'],
+  Int:      ['value: 0'],
+  Float:    ['value: 0.0'],
+  Float32:  ['value: 0.0'],
+  Float64:  ['value: 0.0'],
+  Boolean:  ['value: true', 'value: false'],
+  DateTime: ['value: UTC_NOW'],
+  JSON:     ['value: "{}"'],
+  Blob:     ['value: ""'],
 }
 
 function filterDefaultsByType(fieldType: string, all: Completion[]): Completion[] {
-  const prefixes = TYPE_TO_DEFAULT_PREFIX[fieldType]
-  if (!prefixes) return all
-  return all.filter(c => prefixes.some(p => String(c.apply).startsWith(p)))
+  const values = TYPE_TO_DEFAULT_VALUES[fieldType]
+  if (!values) return all
+  return all.filter(c => values.includes(String(c.apply)))
 }
 
 // ── Source ─────────────────────────────────────────────────────────────────────
