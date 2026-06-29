@@ -523,8 +523,8 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
 
                 <div id="sdl-default" className={styles.refSection}>
                   <p className={styles.refSectionHead}>@default</p>
-                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create. The argument key must match the field type. Use <code>UTC_NOW</code> as a special value for DateTime to default to the current time.</p>
-                  <RefCode>{'active: Boolean @default(bool: true)\nage: Int @default(int: 0)\nstatus: String @default(string: "draft")\ncreatedAt: DateTime @default(dateTime: UTC_NOW)\nexpiry: DateTime @default(dateTime: "2030-01-01T00:00:00Z")\nmeta: JSON @default(json: "{}")\nthumb: Blob @default(blob: "ff0099")'}</RefCode>
+                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create, passed via the single <code>value</code> argument. Use <code>UTC_NOW</code> as a special value for DateTime to default to the current time.</p>
+                  <RefCode>{'active: Boolean @default(value: true)\nage: Int @default(value: 0)\nstatus: String @default(value: "draft")\ncreatedAt: DateTime @default(value: UTC_NOW)\nexpiry: DateTime @default(value: "2030-01-01T00:00:00Z")\nmeta: JSON @default(value: "{}")\nthumb: Blob @default(value: "ff0099")'}</RefCode>
                 </div>
 
                 {/* ── Relations ────────────────────────── */}
@@ -611,8 +611,8 @@ const schemaGuideWidthRef = useRef(schemaGuideWidth)
 
                 <div className={styles.refSection}>
                   <p className={styles.refSectionHead}>@default</p>
-                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create. The argument key must match the field type. Use <code>UTC_NOW</code> as a special value for DateTime to default to the current time.</p>
-                  <RefCode>{'active: Boolean @default(bool: true)\nage: Int @default(int: 0)\nstatus: String @default(string: "draft")\ncreatedAt: DateTime @default(dateTime: UTC_NOW)\nexpiry: DateTime @default(dateTime: "2030-01-01T00:00:00Z")\nmeta: JSON @default(json: "{}")\nthumb: Blob @default(blob: "ff0099")'}</RefCode>
+                  <p className={styles.refSectionDesc}>Value used when the field is omitted on create, passed via the single <code>value</code> argument. Use <code>UTC_NOW</code> as a special value for DateTime to default to the current time.</p>
+                  <RefCode>{'active: Boolean @default(value: true)\nage: Int @default(value: 0)\nstatus: String @default(value: "draft")\ncreatedAt: DateTime @default(value: UTC_NOW)\nexpiry: DateTime @default(value: "2030-01-01T00:00:00Z")\nmeta: JSON @default(value: "{}")\nthumb: Blob @default(value: "ff0099")'}</RefCode>
                 </div>
 
                 <div className={styles.refSection}>

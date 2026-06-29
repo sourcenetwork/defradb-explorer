@@ -15,7 +15,7 @@ export function highlightRefCode(code: string): string {
     let trailingComment = ''
     out = out.replace(/(#.*)$/, (_, c) => { trailingComment = c; return '\x00' })
 
-    // 3. String literals inside directive args, e.g. @default(string: "draft")
+    // 3. String literals inside directive args, e.g. @default(value: "draft")
     out = out.replace(/"([^"]*)"/g, '<span class="sdl-string">&#34;$1&#34;</span>')
 
     // 4. SDL keywords (type / enum / …)
