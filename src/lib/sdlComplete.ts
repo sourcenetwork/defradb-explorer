@@ -36,6 +36,7 @@ const DIRECTIVE_COMPLETIONS: Record<string, Completion[]> = {
     { label: 'value: 0.0',     apply: 'value: 0.0',     detail: 'float default',      type: 'property' },
     { label: 'value: ""',      apply: 'value: ""',      detail: 'string / blob default', type: 'property' },
     { label: 'value: UTC_NOW', apply: 'value: UTC_NOW', detail: 'current UTC time',   type: 'property' },
+    { label: 'value: "2030-01-01T00:00:00Z"', apply: 'value: "2030-01-01T00:00:00Z"', detail: 'ISO 8601 datetime', type: 'property' },
     { label: 'value: "{}"',    apply: 'value: "{}"',    detail: 'JSON default',       type: 'property' },
   ],
   relation: [
@@ -98,7 +99,7 @@ const TYPE_TO_DEFAULT_VALUES: Record<string, string[]> = {
   Float32:  ['value: 0.0'],
   Float64:  ['value: 0.0'],
   Boolean:  ['value: true', 'value: false'],
-  DateTime: ['value: UTC_NOW'],
+  DateTime: ['value: UTC_NOW', 'value: "2030-01-01T00:00:00Z"'],
   JSON:     ['value: "{}"'],
   Blob:     ['value: ""'],
 }
